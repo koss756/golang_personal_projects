@@ -12,14 +12,18 @@ import (
 
 type GRPCServer struct {
 	vote.UnimplementedVoteServiceServer
-	raftService raft.Service
+	nodeID      string
+	raftService raft.RPCService
 }
 
-func NewGRPCServer(raftService raft.Service) *GRPCServer {
-	return &GRPCServer{raftService: raftService}
+func NewGRPCServer(nodeId string, raftService raft.RPCService) *GRPCServer {
+	return &GRPCServer{nodeID: nodeId, raftService: raftService}
 }
 
 func (s *GRPCServer) RequestVote(ctx context.Context, req *vote.RequestVoteMsg) (*vote.RequestVoteMsg, error) {
+	log.Printf("[Node %s] Received RequestVote from candidate %d for term %d",
+		s.nodeID, req.CandidateId, req.Term)
+
 	raftReq := &raft.RequestVoteRequest{
 		Term:         int(req.Term),
 		CandidateID:  int(req.CandidateId),
@@ -39,14 +43,14 @@ func (s *GRPCServer) RequestVote(ctx context.Context, req *vote.RequestVoteMsg) 
 	}, nil
 }
 
-func StartServer(port string, raftService raft.Service) error {
+func StartServer(port string, nodeID string, raftService raft.RPCService) error {
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
 		return err
 	}
 
 	grpcServer := grpc.NewServer()
-	voteServer := NewGRPCServer(raftService)
+	voteServer := NewGRPCServer(nodeID, raftService)
 
 	vote.RegisterVoteServiceServer(grpcServer, voteServer)
 

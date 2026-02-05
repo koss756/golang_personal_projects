@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/koss756/dkvStore/api/vote"
 	"github.com/koss756/dkvStore/raft"
@@ -10,28 +11,36 @@ import (
 )
 
 type GRPC_Client struct {
-	conn   *grpc.ClientConn
-	client vote.VoteServiceClient
+	conn        *grpc.ClientConn
+	connections map[string]vote.VoteServiceClient
 }
 
-func NewGRPCClient(addr string) (*GRPC_Client, error) {
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+func NewGRPCClient(peerAddresses []string) (*GRPC_Client, error) {
+	connections := make(map[string]vote.VoteServiceClient)
 
-	if err != nil {
-		return nil, err
+	for _, addr := range peerAddresses {
+		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to %s: %v", addr, err)
+		}
+
+		connections[addr] = vote.NewVoteServiceClient(conn)
 	}
 
-	return &GRPC_Client{
-		conn:   conn,
-		client: vote.NewVoteServiceClient(conn),
-	}, nil
+	return &GRPC_Client{connections: connections}, nil
 }
 
 func (c *GRPC_Client) Close() error {
 	return c.conn.Close()
 }
 
-func (c *GRPC_Client) RequestVote(ctx context.Context, req *raft.RequestVoteRequest) (*raft.RequestVoteResponse, error) {
+func (c *GRPC_Client) RequestVote(ctx context.Context, target string, req *raft.RequestVoteRequest) (*raft.RequestVoteResponse, error) {
+	// Get the specific connection for this target
+	client, ok := c.connections[target]
+	if !ok {
+		return nil, fmt.Errorf("no connection to %s", target)
+	}
+
 	grpcReq := &vote.RequestVoteMsg{
 		Term:         int64(req.Term),
 		CandidateId:  int64(req.CandidateID),
@@ -39,8 +48,7 @@ func (c *GRPC_Client) RequestVote(ctx context.Context, req *raft.RequestVoteRequ
 		LastLogTerm:  int64(req.LastLogTerm),
 	}
 
-	grpcResp, err := c.client.RequestVote(ctx, grpcReq)
-
+	grpcResp, err := client.RequestVote(ctx, grpcReq)
 	if err != nil {
 		return nil, err
 	}

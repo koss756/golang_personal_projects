@@ -33,12 +33,16 @@ type logEntry struct {
 	term int
 }
 
+var _ RPCService = (*Node)(nil)
+
 type Node struct {
 	id       int
 	state    NodeState
 	term     int
 	votedFor int
 	logs     []logEntry
+
+	peers []string
 
 	// index of highest log entry known to be committed (initialized to 0, increases monotonically)
 	commitIndex int
@@ -57,22 +61,28 @@ type Node struct {
 	electionTimeoutLowerBound int
 	electionTimeoutUpperBound int
 	electionTimeout           int
+
+	transport Service
 }
 
-var _ Service = (*Node)(nil)
-
-func NewNode() *Node {
+func NewNode(peers []string, rpcClient Service) *Node {
 	n := &Node{
 		state:                     Follower,
 		term:                      0,
 		electionTimeoutLowerBound: 150,
 		electionTimeoutUpperBound: 300,
+		peers:                     peers,
+		transport:                 rpcClient,
 	}
 	n.electionTimeout = randomizedTimeout(
 		n.electionTimeoutLowerBound,
 		n.electionTimeoutUpperBound,
 	)
 	return n
+}
+
+func (n *Node) OtherStart() {
+
 }
 
 func (n *Node) Start() {
@@ -100,20 +110,27 @@ func (n *Node) startElection() {
 		LastLogTerm:  lastLogTerm,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-
-	resp, err := n.RequestVote(ctx, req)
-
-	if err != nil {
-		return
-	}
-
-	fmt.Println(resp.Term)
+	n.BroadCastVote(req)
 }
 
 func (n *Node) State() NodeState {
 	return n.state
+}
+
+func (n *Node) BroadCastVote(req *RequestVoteRequest) {
+	for _, port := range n.peers {
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer cancel()
+
+		resp, err := n.transport.RequestVote(ctx, port, req)
+
+		if err != nil {
+			return
+		}
+
+		fmt.Println(resp.Term)
+
+	}
 }
 
 func (n *Node) ElectionTimeout() int {
