@@ -1,8 +1,10 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/koss756/dkvStore/api"
@@ -58,16 +60,49 @@ func InitCluster(numServers int, startPort int) ([]*raft.Node, error) {
 }
 
 func main() {
-	// Create a 3-node cluster starting at port 9000
-	nodes, err := InitCluster(5, 9000)
+	var (
+		id    = flag.Int("id", 0, "node id")
+		addr  = flag.String("addr", "", "listen address (e.g. :9000)")
+		peers = flag.String("peers", "", "comma-separated peer addresses")
+	)
+	flag.Parse()
+
+	if *id == 0 || *addr == "" {
+		log.Fatal("id and addr are required")
+	}
+
+	peerList := []string{}
+	if *peers != "" {
+		peerList = strings.Split(*peers, ",")
+	}
+
+	grpcClient, err := api.NewGRPCClient(peerList)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("failed to create gRPC client: %v", err)
 	}
 
-	fmt.Printf("Cluster initialized with %d nodes\n", len(nodes))
-	for _, node := range nodes {
-		node.Start()
-	}
+	node := raft.NewNode(*id, peerList, grpcClient)
 
+	go func() {
+		log.Printf("Node %d starting gRPC server on %s", *id, *addr)
+		if err := api.StartServer(*addr, node.GetId(), node); err != nil {
+			log.Fatalf("server stopped: %v", err)
+		}
+	}()
+
+	node.Start()
 	select {}
+
+	// // Create a 3-node cluster starting at port 9000
+	// nodes, err := InitCluster(5, 9000)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	// fmt.Printf("Cluster initialized with %d nodes\n", len(nodes))
+	// for _, node := range nodes {
+	// 	node.Start()
+	// }
+
+	// select {}
 }

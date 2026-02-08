@@ -184,13 +184,12 @@ func (n *Node) BroadCastEntries() {
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		defer cancel()
 
-		resp, err := n.transport.AppendEntries(ctx, port, req)
+		_, err := n.transport.AppendEntries(ctx, port, req)
 		if err != nil {
 			log.Printf("%s", err)
 			return
 		}
 
-		log.Printf("%t", resp.Success)
 	}
 
 }
@@ -235,7 +234,9 @@ func (n *Node) RecieveAppendEntries(ctx context.Context, req *types.AppendEntrie
 		Term:    n.term,
 		Success: true,
 	}
-	log.Printf("Recieved Entries")
+
+	log.Printf("[Node %d State: %s]", n.id, n.state)
+
 	select {
 	case n.resetElectionTimer <- struct{}{}:
 	default:
