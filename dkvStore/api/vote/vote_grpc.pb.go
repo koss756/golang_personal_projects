@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.0
 // - protoc             v3.21.12
-// source: vote.proto
+// source: api/vote/vote.proto
 
 package vote
 
@@ -26,7 +26,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type VoteServiceClient interface {
-	RequestVote(ctx context.Context, in *RequestVoteMsg, opts ...grpc.CallOption) (*RequestVoteMsg, error)
+	RequestVote(ctx context.Context, in *RequestVoteMsg, opts ...grpc.CallOption) (*RequestVoteResponse, error)
 }
 
 type voteServiceClient struct {
@@ -37,9 +37,9 @@ func NewVoteServiceClient(cc grpc.ClientConnInterface) VoteServiceClient {
 	return &voteServiceClient{cc}
 }
 
-func (c *voteServiceClient) RequestVote(ctx context.Context, in *RequestVoteMsg, opts ...grpc.CallOption) (*RequestVoteMsg, error) {
+func (c *voteServiceClient) RequestVote(ctx context.Context, in *RequestVoteMsg, opts ...grpc.CallOption) (*RequestVoteResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(RequestVoteMsg)
+	out := new(RequestVoteResponse)
 	err := c.cc.Invoke(ctx, VoteService_RequestVote_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -51,7 +51,7 @@ func (c *voteServiceClient) RequestVote(ctx context.Context, in *RequestVoteMsg,
 // All implementations must embed UnimplementedVoteServiceServer
 // for forward compatibility.
 type VoteServiceServer interface {
-	RequestVote(context.Context, *RequestVoteMsg) (*RequestVoteMsg, error)
+	RequestVote(context.Context, *RequestVoteMsg) (*RequestVoteResponse, error)
 	mustEmbedUnimplementedVoteServiceServer()
 }
 
@@ -62,7 +62,7 @@ type VoteServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedVoteServiceServer struct{}
 
-func (UnimplementedVoteServiceServer) RequestVote(context.Context, *RequestVoteMsg) (*RequestVoteMsg, error) {
+func (UnimplementedVoteServiceServer) RequestVote(context.Context, *RequestVoteMsg) (*RequestVoteResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RequestVote not implemented")
 }
 func (UnimplementedVoteServiceServer) mustEmbedUnimplementedVoteServiceServer() {}
@@ -117,5 +117,5 @@ var VoteService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "vote.proto",
+	Metadata: "api/vote/vote.proto",
 }

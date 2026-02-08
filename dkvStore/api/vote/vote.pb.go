@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v3.21.12
-// source: vote.proto
+// source: api/vote/vote.proto
 
 package vote
 
@@ -24,8 +24,8 @@ const (
 type RequestVoteMsg struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	CandidateId   int64                  `protobuf:"varint,1,opt,name=candidateId,proto3" json:"candidateId,omitempty"`
-	Term          int64                  `protobuf:"varint,2,opt,name=term,proto3" json:"term,omitempty"`                 // candidates term
-	LastLogIndex  int64                  `protobuf:"varint,3,opt,name=lastLogIndex,proto3" json:"lastLogIndex,omitempty"` // index of candidates last log entry
+	Term          int64                  `protobuf:"varint,2,opt,name=term,proto3" json:"term,omitempty"`                 // candidate's term
+	LastLogIndex  int64                  `protobuf:"varint,3,opt,name=lastLogIndex,proto3" json:"lastLogIndex,omitempty"` // index of candidate's last log entry
 	LastLogTerm   int64                  `protobuf:"varint,4,opt,name=lastLogTerm,proto3" json:"lastLogTerm,omitempty"`   // term of candidate's last log entry
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -33,7 +33,7 @@ type RequestVoteMsg struct {
 
 func (x *RequestVoteMsg) Reset() {
 	*x = RequestVoteMsg{}
-	mi := &file_vote_proto_msgTypes[0]
+	mi := &file_api_vote_vote_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45,7 +45,7 @@ func (x *RequestVoteMsg) String() string {
 func (*RequestVoteMsg) ProtoMessage() {}
 
 func (x *RequestVoteMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_vote_proto_msgTypes[0]
+	mi := &file_api_vote_vote_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -58,7 +58,7 @@ func (x *RequestVoteMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestVoteMsg.ProtoReflect.Descriptor instead.
 func (*RequestVoteMsg) Descriptor() ([]byte, []int) {
-	return file_vote_proto_rawDescGZIP(), []int{0}
+	return file_api_vote_vote_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *RequestVoteMsg) GetCandidateId() int64 {
@@ -89,39 +89,94 @@ func (x *RequestVoteMsg) GetLastLogTerm() int64 {
 	return 0
 }
 
-var File_vote_proto protoreflect.FileDescriptor
+type RequestVoteResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Term          int64                  `protobuf:"varint,1,opt,name=term,proto3" json:"term,omitempty"`               // current term, for candidate to update itself
+	VoteGranted   bool                   `protobuf:"varint,2,opt,name=voteGranted,proto3" json:"voteGranted,omitempty"` // true means candidate received vote
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
 
-const file_vote_proto_rawDesc = "" +
+func (x *RequestVoteResponse) Reset() {
+	*x = RequestVoteResponse{}
+	mi := &file_api_vote_vote_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestVoteResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestVoteResponse) ProtoMessage() {}
+
+func (x *RequestVoteResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_vote_vote_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestVoteResponse.ProtoReflect.Descriptor instead.
+func (*RequestVoteResponse) Descriptor() ([]byte, []int) {
+	return file_api_vote_vote_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *RequestVoteResponse) GetTerm() int64 {
+	if x != nil {
+		return x.Term
+	}
+	return 0
+}
+
+func (x *RequestVoteResponse) GetVoteGranted() bool {
+	if x != nil {
+		return x.VoteGranted
+	}
+	return false
+}
+
+var File_api_vote_vote_proto protoreflect.FileDescriptor
+
+const file_api_vote_vote_proto_rawDesc = "" +
 	"\n" +
-	"\n" +
-	"vote.proto\"\x8c\x01\n" +
+	"\x13api/vote/vote.proto\"\x8c\x01\n" +
 	"\x0eRequestVoteMsg\x12 \n" +
 	"\vcandidateId\x18\x01 \x01(\x03R\vcandidateId\x12\x12\n" +
 	"\x04term\x18\x02 \x01(\x03R\x04term\x12\"\n" +
 	"\flastLogIndex\x18\x03 \x01(\x03R\flastLogIndex\x12 \n" +
-	"\vlastLogTerm\x18\x04 \x01(\x03R\vlastLogTerm2@\n" +
-	"\vVoteService\x121\n" +
-	"\vRequestVote\x12\x0f.RequestVoteMsg\x1a\x0f.RequestVoteMsg\"\x00B!Z\x1fgithub.com/koss756/dkvStore/apib\x06proto3"
+	"\vlastLogTerm\x18\x04 \x01(\x03R\vlastLogTerm\"K\n" +
+	"\x13RequestVoteResponse\x12\x12\n" +
+	"\x04term\x18\x01 \x01(\x03R\x04term\x12 \n" +
+	"\vvoteGranted\x18\x02 \x01(\bR\vvoteGranted2E\n" +
+	"\vVoteService\x126\n" +
+	"\vRequestVote\x12\x0f.RequestVoteMsg\x1a\x14.RequestVoteResponse\"\x00B&Z$github.com/koss756/dkvStore/api/voteb\x06proto3"
 
 var (
-	file_vote_proto_rawDescOnce sync.Once
-	file_vote_proto_rawDescData []byte
+	file_api_vote_vote_proto_rawDescOnce sync.Once
+	file_api_vote_vote_proto_rawDescData []byte
 )
 
-func file_vote_proto_rawDescGZIP() []byte {
-	file_vote_proto_rawDescOnce.Do(func() {
-		file_vote_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_vote_proto_rawDesc), len(file_vote_proto_rawDesc)))
+func file_api_vote_vote_proto_rawDescGZIP() []byte {
+	file_api_vote_vote_proto_rawDescOnce.Do(func() {
+		file_api_vote_vote_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_api_vote_vote_proto_rawDesc), len(file_api_vote_vote_proto_rawDesc)))
 	})
-	return file_vote_proto_rawDescData
+	return file_api_vote_vote_proto_rawDescData
 }
 
-var file_vote_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
-var file_vote_proto_goTypes = []any{
-	(*RequestVoteMsg)(nil), // 0: RequestVoteMsg
+var file_api_vote_vote_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_api_vote_vote_proto_goTypes = []any{
+	(*RequestVoteMsg)(nil),      // 0: RequestVoteMsg
+	(*RequestVoteResponse)(nil), // 1: RequestVoteResponse
 }
-var file_vote_proto_depIdxs = []int32{
+var file_api_vote_vote_proto_depIdxs = []int32{
 	0, // 0: VoteService.RequestVote:input_type -> RequestVoteMsg
-	0, // 1: VoteService.RequestVote:output_type -> RequestVoteMsg
+	1, // 1: VoteService.RequestVote:output_type -> RequestVoteResponse
 	1, // [1:2] is the sub-list for method output_type
 	0, // [0:1] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
@@ -129,26 +184,26 @@ var file_vote_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for field type_name
 }
 
-func init() { file_vote_proto_init() }
-func file_vote_proto_init() {
-	if File_vote_proto != nil {
+func init() { file_api_vote_vote_proto_init() }
+func file_api_vote_vote_proto_init() {
+	if File_api_vote_vote_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vote_proto_rawDesc), len(file_vote_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_vote_vote_proto_rawDesc), len(file_api_vote_vote_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   1,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_vote_proto_goTypes,
-		DependencyIndexes: file_vote_proto_depIdxs,
-		MessageInfos:      file_vote_proto_msgTypes,
+		GoTypes:           file_api_vote_vote_proto_goTypes,
+		DependencyIndexes: file_api_vote_vote_proto_depIdxs,
+		MessageInfos:      file_api_vote_vote_proto_msgTypes,
 	}.Build()
-	File_vote_proto = out.File
-	file_vote_proto_goTypes = nil
-	file_vote_proto_depIdxs = nil
+	File_api_vote_vote_proto = out.File
+	file_api_vote_vote_proto_goTypes = nil
+	file_api_vote_vote_proto_depIdxs = nil
 }

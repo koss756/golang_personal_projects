@@ -4,12 +4,17 @@ option go_package = "github.com/koss756/dkvStore/api/vote";
 
 message RequestVoteMsg {
     int64 candidateId = 1;
-    int64 term = 2; // candidates term
-    int64 lastLogIndex = 3; // index of candidates last log entry
+    int64 term = 2; // candidate's term
+    int64 lastLogIndex = 3; // index of candidate's last log entry
     int64 lastLogTerm = 4; // term of candidate's last log entry
 }
 
+message RequestVoteResponse {
+    int64 term = 1; // current term, for candidate to update itself
+    bool voteGranted = 2; // true means candidate received vote
+}
+
 service VoteService {
-  rpc RequestVote(RequestVoteMsg) returns (RequestVoteMsg) {}
+  rpc RequestVote(RequestVoteMsg) returns (RequestVoteResponse) {}
 }
 

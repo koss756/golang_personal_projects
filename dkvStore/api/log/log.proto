@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+option go_package = "github.com/koss756/dkvStore/api/log";
+
+message LogEntry {
+  int64 term = 1;
+  bytes command = 2;
+}
+
+message AppendEntriesMsg {
+  int64 term = 1;           // leader’s term
+  int64 leaderId = 2;       // so follower can redirect clients
+  int64 prevLogIndex = 3;   // index of log entry immediately preceding new ones
+  int64 prevLogTerm = 4;    // term of prevLogIndex entry
+  repeated LogEntry entries = 5; // log entries to store (empty for heartbeat)
+  int64 LeaderCommit = 6;   // leader’s commitIndex
+}
+
+message AppendEntriesResponse {
+  int64 term = 1;
+  bool success = 2;
+}
+
+service LogService {
+  rpc AppendEntries(AppendEntriesMsg) returns (AppendEntriesResponse) {}
+}
