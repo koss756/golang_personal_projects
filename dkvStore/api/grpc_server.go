@@ -25,8 +25,8 @@ func NewGRPCServer(nodeId int, raftService raft.Server) *GRPCServer {
 }
 
 func (s *GRPCServer) RequestVote(ctx context.Context, req *vote.RequestVoteMsg) (*vote.RequestVoteResponse, error) {
-	stdlog.Printf("[Node %d] Received RequestVote from candidate %d for term %d",
-		s.nodeID, req.CandidateId, req.Term)
+	// stdlog.Printf("[Node %d] Received RequestVote from candidate %d for term %d",
+	// 	s.nodeID, req.CandidateId, req.Term)
 
 	raftReq := &types.RequestVoteRequest{
 		Term:         int(req.Term),
@@ -48,7 +48,7 @@ func (s *GRPCServer) RequestVote(ctx context.Context, req *vote.RequestVoteMsg) 
 }
 
 func (s *GRPCServer) AppendEntries(ctx context.Context, req *log.AppendEntriesMsg) (*log.AppendEntriesResponse, error) {
-	stdlog.Printf("[Node %d] Received Append entries", s.nodeID)
+	// stdlog.Printf("[Node %d] Received Append entries", s.nodeID)
 
 	// Convert proto entries to Raft entries
 	entries := make([]*types.LogEntry, len(req.Entries))

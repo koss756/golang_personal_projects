@@ -84,25 +84,11 @@ func main() {
 	node := raft.NewNode(*id, peerList, grpcClient)
 
 	go func() {
-		log.Printf("Node %d starting gRPC server on %s", *id, *addr)
 		if err := api.StartServer(*addr, node.GetId(), node); err != nil {
 			log.Fatalf("server stopped: %v", err)
 		}
 	}()
 
-	node.Start()
+	go node.Start()
 	select {}
-
-	// // Create a 3-node cluster starting at port 9000
-	// nodes, err := InitCluster(5, 9000)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// fmt.Printf("Cluster initialized with %d nodes\n", len(nodes))
-	// for _, node := range nodes {
-	// 	node.Start()
-	// }
-
-	// select {}
 }

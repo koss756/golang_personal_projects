@@ -70,7 +70,7 @@ func (c *RaftClient) RequestVote(ctx context.Context, target string, req *types.
 
 	return &types.RequestVoteResponse{
 		Term:        int(grpcResp.Term),
-		VoteGranted: true,
+		VoteGranted: bool(grpcResp.VoteGranted),
 	}, nil
 }
 
