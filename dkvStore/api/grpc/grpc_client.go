@@ -1,11 +1,11 @@
-package api
+package grpc
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/koss756/dkvStore/api/log"
-	"github.com/koss756/dkvStore/api/vote"
+	"github.com/koss756/dkvStore/api/grpc/log"
+	"github.com/koss756/dkvStore/api/grpc/vote"
 	"github.com/koss756/dkvStore/types"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"

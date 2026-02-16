@@ -1,4 +1,4 @@
-package api
+package grpc
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	stdlog "log"
 	"net"
 
-	"github.com/koss756/dkvStore/api/log"
-	"github.com/koss756/dkvStore/api/vote"
+	"github.com/koss756/dkvStore/api/grpc/log"
+	"github.com/koss756/dkvStore/api/grpc/vote"
 	"github.com/koss756/dkvStore/raft"
 	"github.com/koss756/dkvStore/types"
 	"google.golang.org/grpc"

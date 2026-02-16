@@ -278,6 +278,7 @@ func (n *Node) handleElectionTimeout() {
 		}
 		n.BroadCastVote(req, &votes)
 
+		// vote for self so add 1
 		if len(votes)+1 > n.votesNeeded {
 			log.Printf("%v These are votes", votes)
 			n.Elect()
@@ -316,6 +317,17 @@ func (n *Node) handleRequestVote(req *types.RequestVoteRequest) *types.RequestVo
 }
 
 func (n *Node) handleAppendEntries(req *types.AppendEntriesRequest) *types.AppendEntriesResponse {
+	if n.state == Candidate {
+		if req.Term >= n.term {
+			n.updateState(Follower)
+		}
+
+		return &types.AppendEntriesResponse{
+			Term:    n.term,
+			Success: req.Term >= n.term,
+		}
+	}
+
 	select {
 	case n.resetElectionTimer <- struct{}{}:
 

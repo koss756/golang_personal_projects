@@ -5,7 +5,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/koss756/dkvStore/api"
+	"github.com/koss756/dkvStore/api/grpc"
 	"github.com/koss756/dkvStore/raft"
 )
 
@@ -28,7 +28,7 @@ func main() {
 		peerList = strings.Split(*peers, ",")
 	}
 
-	grpcClient, err := api.NewGRPCClient(peerList)
+	grpcClient, err := grpc.NewGRPCClient(peerList)
 	if err != nil {
 		log.Fatalf("failed to create gRPC client: %v", err)
 	}
@@ -36,7 +36,7 @@ func main() {
 	node := raft.NewNode(*id, peerList, grpcClient, conf)
 
 	go func() {
-		if err := api.StartServer(*addr, node.GetId(), node); err != nil {
+		if err := grpc.StartServer(*addr, node.GetId(), node); err != nil {
 			log.Fatalf("server stopped: %v", err)
 		}
 	}()
