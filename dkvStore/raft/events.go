@@ -15,3 +15,7 @@ type appendEntriesEvent struct {
 	req  *types.AppendEntriesRequest
 	resp chan *types.AppendEntriesResponse
 }
+
+type commandEvent struct {
+	cmd Command
+}

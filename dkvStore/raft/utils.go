@@ -1,7 +1,9 @@
 package raft
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"math/rand"
 	"sync"
 	"time"
@@ -32,4 +34,24 @@ func broadcastToPeers(
 	}
 
 	wg.Wait()
+}
+
+// SerializeCommand converts a Command to []byte using gob encoding
+func SerializeCommand(cmd Command) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	err := enc.Encode(cmd)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// DeserializeCommand converts []byte back to a Command using gob decoding
+func DeserializeCommand(data []byte) (Command, error) {
+	var cmd Command
+	buf := bytes.NewBuffer(data)
+	dec := gob.NewDecoder(buf)
+	err := dec.Decode(&cmd)
+	return cmd, err
 }

@@ -15,3 +15,7 @@ type Server interface {
 	RecieveRequestVote(ctx context.Context, req *types.RequestVoteRequest) (*types.RequestVoteResponse, error)
 	RecieveAppendEntries(ctx context.Context, req *types.AppendEntriesRequest) (*types.AppendEntriesResponse, error)
 }
+
+type CommandHandler interface {
+	SubmitCommand(ctx context.Context, cmd Command) error
+}

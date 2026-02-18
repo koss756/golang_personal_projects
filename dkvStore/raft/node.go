@@ -10,21 +10,19 @@ import (
 	"github.com/koss756/dkvStore/types"
 )
 
-type command struct {
-	msg string
-}
-
-type logEntry struct {
-	cmmd command
-	term int
+type Command struct {
+	Key   string
+	Value string
 }
 
 var _ Server = (*Node)(nil)
+var _ CommandHandler = (*Node)(nil)
 
 type Config struct {
 	ElectionTimeoutLowerBound int
 	ElectionTimeoutUpperBound int
 	HeartbeatTimeout          int
+	httpAddr                  string
 }
 
 type Node struct {
@@ -32,7 +30,8 @@ type Node struct {
 	state       NodeState
 	term        int
 	votedFor    int
-	logs        []logEntry
+	leaderId    int
+	logs        []types.LogEntry
 	votesNeeded int
 	peers       []string
 
@@ -78,7 +77,6 @@ func NewNode(id int, peers []string, rpcClient Client, conf Config) *Node {
 	go n.runHeartBeatTimer()
 
 	n.votesNeeded = (len(peers) / 2) + 1
-	log.Printf("voted needed: %d", n.votesNeeded)
 	return n
 }
 
@@ -87,6 +85,16 @@ func (n *Node) Start() {
 		ev := <-n.events
 		n.handleEvent(ev)
 	}
+}
+
+func (n *Node) SubmitCommand(ctx context.Context, cmd Command) error {
+	// If not leader, return error or redirect
+	if n.state != Leader {
+		return fmt.Errorf("%d", n.leaderId)
+	}
+
+	n.events <- commandEvent{cmd: cmd}
+	return nil
 }
 
 // use pointer to votes to modify slice directly
@@ -107,13 +115,21 @@ func (n *Node) BroadCastVote(req *types.RequestVoteRequest, votes *[]types.Reque
 	})
 }
 
-func (n *Node) BroadCastEntries() {
+func (n *Node) BroadCastEntries(logEntry *types.LogEntry) {
+	var entries []*types.LogEntry
+
+	if logEntry != nil {
+		entries = []*types.LogEntry{logEntry}
+	} else {
+		entries = nil // heartbeat
+	}
+
 	req := &types.AppendEntriesRequest{
 		Term:         n.term,
 		LeaderId:     n.id,
 		PrevLogIndex: 1,
 		PrevLogTerm:  1,
-		Entries:      []*types.LogEntry{n.HeartBeat()},
+		Entries:      entries,
 	}
 
 	broadcastToPeers(100*time.Millisecond, n.peers, func(ctx context.Context, peer string) {
@@ -125,16 +141,9 @@ func (n *Node) BroadCastEntries() {
 }
 
 func (n *Node) Elect() {
-	log.Printf("[Node %d] Was elected As Leader", n.id)
 	n.updateState(Leader)
-
-	select {
-	case n.resetElectionTimer <- struct{}{}:
-	case n.resetHeartbeatTimer <- struct{}{}:
-	default:
-		// Channel full, timer will be reset soon anyway
-	}
-	// n.BroadCastEntries()
+	n.resetElectionTimer <- struct{}{}
+	n.resetHeartbeatTimer <- struct{}{}
 }
 
 func (n *Node) HeartBeat() *types.LogEntry {
@@ -142,7 +151,7 @@ func (n *Node) HeartBeat() *types.LogEntry {
 }
 
 func (n *Node) RecieveRequestVote(ctx context.Context, req *types.RequestVoteRequest) (*types.RequestVoteResponse, error) {
-	respChan := make(chan *types.RequestVoteResponse)
+	respChan := make(chan *types.RequestVoteResponse, 1)
 
 	n.events <- requestVoteEvent{req: req, resp: respChan}
 
@@ -155,7 +164,7 @@ func (n *Node) RecieveRequestVote(ctx context.Context, req *types.RequestVoteReq
 }
 
 func (n *Node) RecieveAppendEntries(ctx context.Context, req *types.AppendEntriesRequest) (*types.AppendEntriesResponse, error) {
-	respChan := make(chan *types.AppendEntriesResponse)
+	respChan := make(chan *types.AppendEntriesResponse, 1)
 
 	n.events <- appendEntriesEvent{req: req, resp: respChan}
 
@@ -180,7 +189,6 @@ func (n *Node) runElectionTimer() {
 			// Timer fired
 			if n.state != Leader {
 				n.events <- electionTimeout{}
-				log.Printf("timeout: %d", timeout)
 			}
 			// Create new random timeout and reset
 			timeout = randomizedTimeout(
@@ -191,8 +199,6 @@ func (n *Node) runElectionTimer() {
 
 		case <-n.resetElectionTimer:
 			// Stop the timer and drain if necessary
-
-			log.Printf("RESET: %d", timeout)
 			if !timer.Stop() {
 				select {
 				case <-timer.C:
@@ -249,16 +255,16 @@ func (n *Node) handleEvent(ev event) {
 		resp := n.handleRequestVote(e.req)
 		log.Printf("[State %s] request vote event: %t ", n.state, resp.VoteGranted)
 		e.resp <- resp
-
 	case appendEntriesEvent:
-		log.Printf("[Node %s] append entries event", n.state)
 		resp := n.handleAppendEntries(e.req)
 		e.resp <- resp
+	case commandEvent:
+		log.Printf("command Event!")
+		n.handleCommand(e.cmd)
 	}
 }
 
 func (n *Node) handleElectionTimeout() {
-	log.Printf("[Node %d] starting election", n.id)
 	votes := make([]types.RequestVoteResponse, 0)
 
 	if n.state != Leader {
@@ -278,17 +284,22 @@ func (n *Node) handleElectionTimeout() {
 		}
 		n.BroadCastVote(req, &votes)
 
+		log.Printf("Votes: %v", votes)
+
 		// vote for self so add 1
 		if len(votes)+1 > n.votesNeeded {
-			log.Printf("%v These are votes", votes)
 			n.Elect()
+		} else {
+			n.state = Follower
+			n.votedFor = 0
+			n.resetElectionTimer <- struct{}{}
 		}
 	}
 }
 
 func (n *Node) handleHeartbeatTimeout() {
 	if n.state == Leader {
-		n.BroadCastEntries()
+		n.BroadCastEntries(nil)
 	}
 }
 
@@ -300,9 +311,11 @@ func (n *Node) handleRequestVote(req *types.RequestVoteRequest) *types.RequestVo
 		}
 	}
 
-	// if req.Term > n.term {
-	//     n.becomeFollower(req.Term)
-	// }
+	if req.Term > n.term {
+		n.term = req.Term
+		n.state = Follower
+		n.votedFor = 0
+	}
 
 	granted := false
 	if n.votedFor == 0 || n.votedFor == req.CandidateID {
@@ -328,16 +341,39 @@ func (n *Node) handleAppendEntries(req *types.AppendEntriesRequest) *types.Appen
 		}
 	}
 
+	log.Printf("[Node %s] logs %v", n.state, n.logs)
+
 	select {
 	case n.resetElectionTimer <- struct{}{}:
 
 	default:
 		// Channel full, timer will be reset soon anyway
 	}
+	for _, log := range req.Entries {
+		n.logs = append(n.logs, *log)
+	}
+	n.leaderId = req.LeaderId
 	return &types.AppendEntriesResponse{
 		Term:    n.term,
 		Success: true,
 	}
+}
+
+func (n *Node) handleCommand(cmd Command) {
+	data, err := SerializeCommand(cmd)
+
+	if err != nil {
+		log.Printf("Failed to serialize command: %v", err)
+	}
+
+	entry := types.LogEntry{
+		Command: data,
+		Term:    n.term,
+	}
+
+	n.logs = append(n.logs, entry)
+	log.Printf("[Node %s] logs %v", n.state, n.logs)
+	n.BroadCastEntries(&entry)
 }
 
 func (n *Node) updateState(state NodeState) {
