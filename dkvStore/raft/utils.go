@@ -7,6 +7,8 @@ import (
 	"math/rand"
 	"sync"
 	"time"
+
+	"github.com/koss756/dkvStore/types"
 )
 
 func randomizedTimeout(lowerBound, upperBound int) int {
@@ -54,4 +56,20 @@ func DeserializeCommand(data []byte) (Command, error) {
 	dec := gob.NewDecoder(buf)
 	err := dec.Decode(&cmd)
 	return cmd, err
+}
+
+func acceptAppendEntry(ans bool, term int) *types.AppendEntriesResponse {
+	return &types.AppendEntriesResponse{Term: term, Success: ans}
+}
+
+func acceptRequestVote(ans bool, term int) *types.RequestVoteResponse {
+	return &types.RequestVoteResponse{Term: term, VoteGranted: ans}
+}
+
+func toValueSlice(entries []*types.LogEntry) []types.LogEntry {
+	out := make([]types.LogEntry, len(entries))
+	for i, e := range entries {
+		out[i] = *e
+	}
+	return out
 }

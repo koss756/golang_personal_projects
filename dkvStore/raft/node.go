@@ -151,6 +151,9 @@ func (n *Node) HeartBeat() *types.LogEntry {
 }
 
 func (n *Node) RecieveRequestVote(ctx context.Context, req *types.RequestVoteRequest) (*types.RequestVoteResponse, error) {
+	// If RPC request contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
+	n.isHigherTerm(req.Term)
+
 	respChan := make(chan *types.RequestVoteResponse, 1)
 
 	n.events <- requestVoteEvent{req: req, resp: respChan}
@@ -164,6 +167,9 @@ func (n *Node) RecieveRequestVote(ctx context.Context, req *types.RequestVoteReq
 }
 
 func (n *Node) RecieveAppendEntries(ctx context.Context, req *types.AppendEntriesRequest) (*types.AppendEntriesResponse, error) {
+	// If RPC request contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
+	n.isHigherTerm(req.Term)
+
 	respChan := make(chan *types.AppendEntriesResponse, 1)
 
 	n.events <- appendEntriesEvent{req: req, resp: respChan}
@@ -215,6 +221,7 @@ func (n *Node) runElectionTimer() {
 	}
 }
 
+// This timer only needs to run if there is a leader waste of CPU cycles
 func (n *Node) runHeartBeatTimer() {
 	timeout := n.config.HeartbeatTimeout
 	timer := time.NewTimer(time.Duration(timeout) * time.Millisecond)
@@ -268,7 +275,7 @@ func (n *Node) handleElectionTimeout() {
 	votes := make([]types.RequestVoteResponse, 0)
 
 	if n.state != Leader {
-		n.state = Candidate
+		n.updateState(Candidate)
 		n.term++
 		n.votedFor = n.id
 		currentTerm := n.term
@@ -282,6 +289,7 @@ func (n *Node) handleElectionTimeout() {
 			LastLogIndex: lastLogIndex,
 			LastLogTerm:  lastLogTerm,
 		}
+		// Wait for response
 		n.BroadCastVote(req, &votes)
 
 		log.Printf("Votes: %v", votes)
@@ -303,18 +311,20 @@ func (n *Node) handleHeartbeatTimeout() {
 	}
 }
 
+func (n *Node) isHigherTerm(term int) bool {
+	if term > n.term {
+		n.term = term
+		n.updateState(Follower)
+	}
+	return term > n.term
+}
+
 func (n *Node) handleRequestVote(req *types.RequestVoteRequest) *types.RequestVoteResponse {
 	if req.Term < n.term {
 		return &types.RequestVoteResponse{
 			Term:        n.term,
 			VoteGranted: false,
 		}
-	}
-
-	if req.Term > n.term {
-		n.term = req.Term
-		n.state = Follower
-		n.votedFor = 0
 	}
 
 	granted := false
@@ -329,34 +339,70 @@ func (n *Node) handleRequestVote(req *types.RequestVoteRequest) *types.RequestVo
 	}
 }
 
-func (n *Node) handleAppendEntries(req *types.AppendEntriesRequest) *types.AppendEntriesResponse {
-	if n.state == Candidate {
-		if req.Term >= n.term {
-			n.updateState(Follower)
-		}
-
-		return &types.AppendEntriesResponse{
-			Term:    n.term,
-			Success: req.Term >= n.term,
-		}
+func (n *Node) hasMatchingLog(prevLogIndex, prevLogTerm int) bool {
+	if prevLogIndex == 0 {
+		return true
 	}
 
-	log.Printf("[Node %s] logs %v", n.state, n.logs)
+	if prevLogIndex > len(n.logs) {
+		return false
+	}
+
+	// check if the logs index match
+	if n.logs[prevLogIndex].Term != prevLogTerm {
+		return false
+	}
+
+	return true
+}
+
+func (n *Node) hasConflictedLogs(req *types.AppendEntriesRequest) {
+	for i, entry := range req.Entries {
+		logIndex := req.PrevLogIndex + i + 1 // 1-based
+
+		if logIndex <= len(n.logs) {
+			if n.logs[logIndex-1].Term != entry.Term {
+				// Conflict: truncate everything from here and append the rest
+				n.logs = n.logs[:logIndex-1]
+				n.logs = append(n.logs, *entry)
+				n.logs = append(n.logs, toValueSlice(req.Entries[i+1:])...)
+				break
+			}
+			// Already matches, skip
+		} else {
+			// Past end of our log, just append remaining
+			n.logs = append(n.logs, toValueSlice(req.Entries[i:])...)
+			break
+		}
+	}
+}
+
+func (n *Node) handleAppendEntries(req *types.AppendEntriesRequest) *types.AppendEntriesResponse {
+	if req.Term < n.term {
+		return acceptAppendEntry(false, n.term)
+	}
 
 	select {
 	case n.resetElectionTimer <- struct{}{}:
-
 	default:
-		// Channel full, timer will be reset soon anyway
 	}
-	for _, log := range req.Entries {
-		n.logs = append(n.logs, *log)
+
+	// Rule 2: Reply false if log doesn't contain a matching entry at prevLogIndex
+	if !n.hasMatchingLog(req.PrevLogIndex, req.PrevLogTerm) {
+		return acceptAppendEntry(false, n.term)
 	}
+
+	// Rule 3: Walk new entries, detect conflicts, truncate and append
+	n.hasConflictedLogs(req)
+
+	// Update leaderCommit
+	if req.LeaderCommit > n.commitIndex {
+		lastNewIndex := req.PrevLogIndex + len(req.Entries)
+		n.commitIndex = min(req.LeaderCommit, lastNewIndex)
+	}
+
 	n.leaderId = req.LeaderId
-	return &types.AppendEntriesResponse{
-		Term:    n.term,
-		Success: true,
-	}
+	return acceptAppendEntry(true, n.term)
 }
 
 func (n *Node) handleCommand(cmd Command) {
@@ -371,8 +417,8 @@ func (n *Node) handleCommand(cmd Command) {
 		Term:    n.term,
 	}
 
+	// leader appends to log entry
 	n.logs = append(n.logs, entry)
-	log.Printf("[Node %s] logs %v", n.state, n.logs)
 	n.BroadCastEntries(&entry)
 }
 

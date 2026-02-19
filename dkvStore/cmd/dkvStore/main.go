@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	conf := raft.Config{ElectionTimeoutLowerBound: 1500, ElectionTimeoutUpperBound: 3000, HeartbeatTimeout: 1000}
+	conf := raft.Config{ElectionTimeoutLowerBound: 150, ElectionTimeoutUpperBound: 300, HeartbeatTimeout: 100}
 
 	var (
 		id       = flag.Int("id", 0, "node id")

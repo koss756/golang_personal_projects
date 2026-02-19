@@ -5,8 +5,8 @@ set -e
 NODES=5
 GRPC_BASE_PORT=9000
 HTTP_BASE_PORT=8000
-# CMD="go run cmd/dkvStore/main.go"
-CMD="./bin/dkvStore"
+CMD="go run cmd/dkvStore/main.go"
+# CMD="./bin/dkvStore"
 
 pids=()
 
