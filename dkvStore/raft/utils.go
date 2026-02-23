@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"log"
 	"math/rand"
 	"sync"
 	"time"
@@ -51,6 +52,7 @@ func SerializeCommand(cmd Command) ([]byte, error) {
 
 // DeserializeCommand converts []byte back to a Command using gob decoding
 func DeserializeCommand(data []byte) (Command, error) {
+	log.Printf("byte Data: %v", data)
 	var cmd Command
 	buf := bytes.NewBuffer(data)
 	dec := gob.NewDecoder(buf)

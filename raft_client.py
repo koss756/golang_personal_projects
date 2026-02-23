@@ -48,12 +48,37 @@ def find_and_send(payload: dict):
 
 
 def parse_input(user_input: str):
-    if ":" not in user_input:
-        print("Invalid format. Use key:value")
+    parts = user_input.strip().split()
+
+    if len(parts) == 0:
         return None
 
-    key, value = user_input.split(":", 1)
-    return {key.strip(): value.strip()}
+    op = parts[0].upper()
+
+    if op == "SET":
+        if len(parts) != 3:
+            print("Usage: SET <key> <value>")
+            return None
+
+        return {
+            "op": "set",
+            "key": parts[1],
+            "value": parts[2],
+        }
+
+    elif op == "DELETE":
+        if len(parts) != 2:
+            print("Usage: DELETE <key>")
+            return None
+
+        return {
+            "op": "delete",
+            "key": parts[1],
+        }
+
+    else:
+        print("Unknown command. Use SET or DELETE.")
+        return None
 
 
 def main():

@@ -19,3 +19,7 @@ type appendEntriesEvent struct {
 type commandEvent struct {
 	cmd Command
 }
+
+type commitLogEvent struct {
+	cmd Command
+}
