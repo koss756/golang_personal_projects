@@ -2,6 +2,7 @@ package raft
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/koss756/dkvStore/types"
@@ -26,6 +27,28 @@ func (m *MockTransport) AppendEntries(ctx context.Context, peer string, req *typ
 }
 
 // Test Helpers
+func makeLogs(n int, term int) []types.LogEntry {
+	logs := make([]types.LogEntry, n)
+	for i := 0; i < n; i++ {
+		logs[i] = types.LogEntry{
+			Term:    term,
+			Command: []byte{},
+		}
+	}
+	return logs
+}
+
+func makeSequentialLogs(n int, startTerm int) []types.LogEntry {
+	logs := make([]types.LogEntry, n)
+	for i := 0; i < n; i++ {
+		logs[i] = types.LogEntry{
+			Term:    startTerm + i,
+			Command: []byte(fmt.Sprintf("cmd-%d", i)),
+		}
+	}
+	return logs
+}
+
 func newTestNode(id int, peers []string, transport Client) *Node {
 	return &Node{
 		id:                  id,
@@ -43,10 +66,6 @@ func newTestNode(id int, peers []string, transport Client) *Node {
 		},
 	}
 }
-
-// ---- Election Timeout Tests ----
-
-// ---- Election Timeout Tests ----
 
 func TestElectionTimeout_WinsElection_BecomesLeader(t *testing.T) {
 	transport := new(MockTransport)
@@ -72,4 +91,133 @@ func TestElectionTimeout_TermIncrements(t *testing.T) {
 
 	assert.Equal(t, 3, node.term)
 	transport.AssertExpectations(t)
+}
+
+func TestHandleRequestVote_GrantsVote(t *testing.T) {
+	transport := new(MockTransport)
+
+	node := newTestNode(2, []string{"peer1"}, transport)
+	node.term = 1
+	node.votedFor = 0
+	node.logs = []types.LogEntry{}
+
+	req := &types.RequestVoteRequest{
+		Term:         1,
+		CandidateID:  1,
+		LastLogTerm:  0,
+		LastLogIndex: -1,
+	}
+
+	resp := node.handleRequestVote(req)
+
+	assert.True(t, resp.VoteGranted)
+	assert.Equal(t, 1, node.term)
+	assert.Equal(t, 1, node.votedFor)
+}
+
+func TestHandleRequestVote_AlreadyVOtedInTerm(t *testing.T) {
+	transport := new(MockTransport)
+
+	node := newTestNode(2, []string{"peer1"}, transport)
+	node.term = 1
+	node.votedFor = 2 // Some random id other than req
+	node.logs = []types.LogEntry{}
+
+	req := &types.RequestVoteRequest{
+		Term:         1,
+		CandidateID:  1,
+		LastLogTerm:  0,
+		LastLogIndex: 0,
+	}
+
+	resp := node.handleRequestVote(req)
+
+	assert.False(t, resp.VoteGranted)
+}
+
+func TestHandleRequestVote_OutOfDateTerm(t *testing.T) {
+	transport := new(MockTransport)
+
+	node := newTestNode(2, []string{"peer1"}, transport)
+	node.term = 1
+	node.votedFor = 0
+	node.logs = []types.LogEntry{}
+
+	req := &types.RequestVoteRequest{
+		Term:         node.term + 5,
+		CandidateID:  1,
+		LastLogTerm:  0,
+		LastLogIndex: -1,
+	}
+
+	node.handleRequestVote(req)
+
+	assert.Equal(t, Follower, node.state)
+	assert.Equal(t, req.Term, node.term)
+}
+
+func TestHandleRequestVote_GrantVote_WithLogs(t *testing.T) {
+	transport := new(MockTransport)
+
+	node := newTestNode(2, []string{"peer1"}, transport)
+	node.term = 1
+	node.votedFor = 0
+	node.logs = makeSequentialLogs(5, 1)
+
+	fmt.Printf("Logs: %v", node.logs)
+
+	req := &types.RequestVoteRequest{
+		Term:         5,
+		CandidateID:  1,
+		LastLogTerm:  5,
+		LastLogIndex: 5,
+	}
+
+	resp := node.handleRequestVote(req)
+
+	assert.True(t, resp.VoteGranted)
+}
+
+func TestHandleRequestVote_VoteDenied_RecieverHasMorelogs(t *testing.T) {
+	transport := new(MockTransport)
+
+	node := newTestNode(2, []string{"peer1"}, transport)
+	node.term = 1
+	node.votedFor = 0
+	node.logs = makeSequentialLogs(5, 1)
+
+	fmt.Printf("Logs: %v", node.logs)
+
+	req := &types.RequestVoteRequest{
+		Term:         5,
+		CandidateID:  1,
+		LastLogTerm:  5,
+		LastLogIndex: 3,
+	}
+
+	resp := node.handleRequestVote(req)
+
+	assert.False(t, resp.VoteGranted)
+}
+
+func TestHandleRequestVote_VoteDenied_RecieverHasHigherTerm(t *testing.T) {
+	transport := new(MockTransport)
+
+	node := newTestNode(2, []string{"peer1"}, transport)
+	node.term = 6
+	node.votedFor = 0
+	node.logs = makeSequentialLogs(5, 1)
+
+	fmt.Printf("Logs: %v", node.logs)
+
+	req := &types.RequestVoteRequest{
+		Term:         5,
+		CandidateID:  1,
+		LastLogTerm:  5,
+		LastLogIndex: 3,
+	}
+
+	resp := node.handleRequestVote(req)
+
+	assert.False(t, resp.VoteGranted)
 }
