@@ -17,5 +17,5 @@ type Server interface {
 }
 
 type CommandHandler interface {
-	SubmitCommand(ctx context.Context, cmd Command) error
+	SubmitCommand(ctx context.Context, cmd []byte) error
 }

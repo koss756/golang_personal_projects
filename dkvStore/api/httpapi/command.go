@@ -2,13 +2,28 @@ package httpapi
 
 import (
 	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"io"
 	"log"
 	"net/http"
-
-	"github.com/koss756/dkvStore/raft"
 )
+
+type Command struct {
+	Op    string `json:"op"`
+	Key   string `json:"key"`
+	Value string `json:"value,omitempty"`
+}
+
+func SerializeCommand(cmd Command) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	err := enc.Encode(cmd)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
 
 func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
@@ -21,13 +36,20 @@ func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {
 	// Restore the body so Decode can still read it
 	r.Body = io.NopCloser(bytes.NewBuffer(body))
 
-	var cmd raft.Command
+	var cmd Command
 	if err := json.NewDecoder(r.Body).Decode(&cmd); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if err := s.handler.SubmitCommand(r.Context(), cmd); err != nil {
+	cmd_byte, err := SerializeCommand(cmd)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := s.handler.SubmitCommand(r.Context(), cmd_byte); err != nil {
 		leaderIdStr := err.Error()
 
 		w.Header().Set("Content-Type", "application/json")

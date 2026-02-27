@@ -10,8 +10,6 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// ---- Mock Transport ----
-
 type MockTransport struct {
 	mock.Mock
 }

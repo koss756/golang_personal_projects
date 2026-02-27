@@ -4,19 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/koss756/dkvStore/types"
 )
-
-type Command struct {
-	Op    string `json:"op"` // "set" | "delete"
-	Key   string `json:"key"`
-	Value string `json:"value,omitempty"`
-}
 
 var _ Server = (*Node)(nil)
 var _ CommandHandler = (*Node)(nil)
@@ -46,7 +39,6 @@ type Node struct {
 	lastApplied int
 
 	//LEADER STATES
-
 	// for each server, index of the next log entry to send to that server
 	// (initialized to leader last log index + 1)
 	nextIndex map[string]int
@@ -94,13 +86,11 @@ func (n *Node) Start() {
 	}
 }
 
-func (n *Node) SubmitCommand(ctx context.Context, cmd Command) error {
+func (n *Node) SubmitCommand(ctx context.Context, cmd []byte) error {
 	// If not leader, return error or redirect
 	if n.state != Leader {
 		return fmt.Errorf("%d", n.leaderId)
 	}
-
-	log.Printf("SUBMIT COMMAND %+v", cmd)
 
 	n.events <- commandEvent{cmd: cmd}
 	return nil
@@ -151,11 +141,10 @@ func (n *Node) BroadcastEntries(isHeartbeat bool) int {
 }
 
 // replicateToPeer handles the retry loop for a single peer, returning true if the peer acknowledged.
-func (n *Node) replicateToPeer(peer string, isHeartbeat bool) bool {
+func (n *Node) replicateToPeer(peer string, req types.AppendEntriesRequest) bool {
 	const timeout = 500 * time.Millisecond
 
 	for {
-		req, prevIndex := n.buildAppendEntriesRequest(peer, isHeartbeat)
 
 		if len(req.Entries) > 0 {
 			log.Printf("To peer %s with req: %+v", peer, req)
@@ -244,8 +233,8 @@ func (n *Node) Elect() {
 	n.matchIndex = make(map[string]int)
 
 	for _, peer := range n.peers {
-		n.nextIndex[peer] = len(n.logs)
-		n.matchIndex[peer] = 0
+		n.nextIndex[peer] = len(n.logs) // sentLength
+		n.matchIndex[peer] = 0          //ackedLength
 	}
 	log.Printf("[Node  %d] Elected Leader", n.id)
 	n.resetElectionTimer <- struct{}{}
@@ -487,67 +476,63 @@ func (n *Node) hasConflictedLogs(req *types.AppendEntriesRequest) {
 }
 
 func (n *Node) handleAppendEntries(req *types.AppendEntriesRequest) *types.AppendEntriesResponse {
-	if req.Term < n.term {
-		log.Printf("Rejected Append Entries %v", req.Entries)
-		return acceptAppendEntry(false, n.term)
+	if req.Term > n.term {
+		n.term = req.Term
+		n.updateState(Follower)
+		n.votedFor = 0
+		n.leaderId = req.LeaderId
 	}
 
-	select {
-	case n.resetElectionTimer <- struct{}{}:
-	default:
+	logOk := (len(n.logs) >= req.PrevLogIndex) && (req.PrevLogIndex == 0 || n.logs[req.PrevLogIndex-1].Term == req.PrevLogTerm)
+
+	if req.Term == n.term && logOk {
+		// APPEND_ENTRIES(req.PrevLogIndex, req.LeaderCommit, req.Entries) IMPLEMENT
+		ack := req.PrevLogIndex + len(req.Entries)
+	} else {
+
 	}
-
-	// Rule 2: Reply false if log doesn't contain a matching entry at prevLogIndex
-	if !n.hasMatchingLog(req.PrevLogIndex, req.PrevLogTerm) && req.PrevLogIndex != 0 {
-		log.Printf("[Node %d] Rejected append entries, broke rule 2 %v, %+v", n.id, n.logs, req)
-		return acceptAppendEntry(false, n.term)
-	}
-
-	// Rule 3: Walk new entries, detect conflicts, truncate and append
-	n.hasConflictedLogs(req)
-
-	// Update leaderCommit
-	if req.LeaderCommit > n.commitIndex {
-		lastNewIndex := req.PrevLogIndex + len(req.Entries)
-		n.commitIndex = min(req.LeaderCommit, lastNewIndex)
-	}
-
-	if len(req.Entries) > 0 {
-		var parts []string
-
-		for _, entry := range req.Entries {
-			cmd, err := DeserializeCommand(entry.Command)
-			if err != nil {
-				parts = append(parts, fmt.Sprintf("[term=%d invalid-cmd]", entry.Term))
-				continue
-			}
-
-			parts = append(parts, fmt.Sprintf("[term=%d cmd=%+v]", entry.Term, cmd))
-		}
-
-		log.Printf("Accepted Append Entries: %s", strings.Join(parts, " "))
-	}
-	n.leaderId = req.LeaderId
-	return acceptAppendEntry(true, n.term)
 }
 
-func (n *Node) handleCommand(cmd Command) {
-	log.Printf("We are go this command: %+v", cmd)
-	data, err := SerializeCommand(cmd)
-
-	if err != nil {
-		log.Printf("Failed to serialize command: %v", err)
-	}
-
-	entry := types.LogEntry{
-		Command: data,
+func (n *Node) handleCommand(cmd []byte) {
+	logEntry := types.LogEntry{
+		Command: cmd,
 		Term:    n.term,
 	}
 
-	n.logs = append(n.logs, entry)
+	n.logs = append(n.logs, logEntry)
+	// n.matchIndex[n.id] := len(n.logs)  Is this needed?
+
+	for _, peer := range n.peers {
+		n.replicateLog(peer)
+	}
+
 	acceptedCount := n.BroadcastEntries(false)
+
 	if acceptedCount > len(n.peers)/2+1 {
 		go func() { n.events <- commitLogEvent{cmd: cmd} }()
+	}
+}
+
+func (n *Node) replicateLog(peer string, isHeartBeat bool) {
+	prevLogIndex := n.nextIndex[peer] // index of the next log entry to send to follower
+
+	var entries []types.LogEntry
+
+	if !isHeartBeat {
+		entries = n.logs[prevLogIndex:] // log entries to store
+	}
+
+	prevLogTerm := 0
+	if prevLogIndex > 0 {
+		prevLogTerm = n.logs[prevLogIndex-1].Term
+	}
+
+	req := &types.AppendEntriesRequest{
+		Term:         n.term,
+		LeaderId:     n.id,
+		PrevLogIndex: prevLogIndex,
+		PrevLogTerm:  prevLogTerm,
+		Entries:      entries,
 	}
 }
 
