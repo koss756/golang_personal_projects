@@ -47,32 +47,35 @@ type Node struct {
 	// (initialized to 0)
 	matchIndex map[string]int
 
-	electionTimer  time.Timer
-	heartBeatTimer time.Timer
+	electionTimer  *time.Timer
+	heartbeatTimer *time.Timer
+	timerMu        sync.Mutex
 
 	events chan event
 
-	resetElectionTimer  chan struct{}
-	resetHeartbeatTimer chan struct{}
-	config              Config
-	transport           Client
+	// resetElectionTimer  chan struct{}
+	// resetHeartbeatTimer chan struct{}
+	config    Config
+	transport Client
 }
 
 func NewNode(id string, peers []string, rpcClient Client, conf Config) *Node {
+	electionTimeout := randomizedTimeout(conf.ElectionTimeoutLowerBound, conf.ElectionTimeoutUpperBound)
+
 	n := &Node{
-		id:                  id,
-		state:               Follower,
-		term:                0,
-		peers:               peers,
-		transport:           rpcClient,
-		events:              make(chan event),
-		resetElectionTimer:  make(chan struct{}, 1),
-		resetHeartbeatTimer: make(chan struct{}, 1),
-		config:              conf,
+		id:             id,
+		state:          Follower,
+		term:           0,
+		peers:          peers,
+		transport:      rpcClient,
+		events:         make(chan event),
+		electionTimer:  time.NewTimer(time.Duration(electionTimeout) * time.Millisecond),
+		heartbeatTimer: time.NewTimer(time.Duration(conf.HeartbeatTimeout) * time.Millisecond),
+		config:         conf,
 	}
 
 	go n.runElectionTimer()
-	go n.runHeartBeatTimer()
+	go n.runHeartbeatTimer()
 
 	n.votesNeeded = (len(peers) / 2) + 1
 	return n
@@ -116,7 +119,7 @@ func (n *Node) BroadCastVote(req *types.RequestVoteRequest, votes *[]types.Reque
 			n.term = resp.Term
 			n.updateState(Follower)
 			n.votedFor = ""
-			n.resetElectionTimer <- struct{}{}
+			n.resetElectionTimer()
 		}
 	})
 }
@@ -158,32 +161,25 @@ func (n *Node) replicateToPeer(peer string, req *types.AppendEntriesRequest) (*t
 	}
 }
 
-// buildAppendEntriesRequest constructs the RPC request for the given peer.
-func (n *Node) buildAppendEntriesRequest(peer string, isHeartbeat bool) (*types.AppendEntriesRequest, int) {
-	prevIndex := n.nextIndex[peer] - 1
-	if prevIndex < 0 {
-		prevIndex = 0
+func (n *Node) resetElectionTimer() {
+	timeout := randomizedTimeout(n.config.ElectionTimeoutLowerBound, n.config.ElectionTimeoutUpperBound)
+	n.resetTimer(n.electionTimer, time.Duration(timeout)*time.Millisecond)
+}
+
+func (n *Node) resetHeartbeatTimer() {
+	n.resetTimer(n.heartbeatTimer, time.Duration(n.config.HeartbeatTimeout)*time.Millisecond)
+}
+
+func (n *Node) resetTimer(t *time.Timer, duration time.Duration) {
+	n.timerMu.Lock()
+	defer n.timerMu.Unlock()
+	if !t.Stop() {
+		select {
+		case <-t.C:
+		default:
+		}
 	}
-
-	var prevLogTerm int
-	if len(n.logs) > 0 && prevIndex < len(n.logs) {
-		prevLogTerm = n.logs[prevIndex].Term
-	}
-
-	var entries []types.LogEntry
-
-	if !isHeartbeat {
-		logSlice := n.logs[n.nextIndex[peer]:]
-		entries = make([]types.LogEntry, len(logSlice))
-	}
-
-	return &types.AppendEntriesRequest{
-		Term:         n.term,
-		LeaderId:     n.id,
-		PrevLogIndex: prevIndex,
-		PrevLogTerm:  prevLogTerm,
-		Entries:      entries,
-	}, prevIndex
+	t.Reset(duration)
 }
 
 func (n *Node) Elect() {
@@ -196,9 +192,8 @@ func (n *Node) Elect() {
 		n.nextIndex[peer] = len(n.logs) // sentLength
 		n.matchIndex[peer] = 0          //ackedLength
 	}
-	log.Printf("[Node  %s] Elected Leader", n.id)
-	n.resetElectionTimer <- struct{}{}
-	n.resetHeartbeatTimer <- struct{}{}
+	n.resetElectionTimer()
+	n.resetHeartbeatTimer()
 }
 
 func (n *Node) HeartBeat() *types.LogEntry {
@@ -238,67 +233,33 @@ func (n *Node) RecieveAppendEntries(ctx context.Context, req *types.AppendEntrie
 }
 
 func (n *Node) runElectionTimer() {
-	timeout := randomizedTimeout(
-		n.config.ElectionTimeoutLowerBound,
-		n.config.ElectionTimeoutUpperBound,
-	)
-	timer := time.NewTimer(time.Duration(timeout) * time.Millisecond)
-
 	for {
-		select {
-		case <-timer.C:
-			// Timer fired
-			if n.state != Leader {
-				n.events <- electionTimeout{}
-			}
-			// Create new random timeout and reset
-			timeout = randomizedTimeout(
-				n.config.ElectionTimeoutLowerBound,
-				n.config.ElectionTimeoutUpperBound,
-			)
-			timer.Reset(time.Duration(timeout) * time.Millisecond)
+		<-n.electionTimer.C
 
-		case <-n.resetElectionTimer:
-			// Stop the timer and drain if necessary
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
-			// Create new random timeout and reset
-			timeout = randomizedTimeout(
-				n.config.ElectionTimeoutLowerBound,
-				n.config.ElectionTimeoutUpperBound,
-			)
-			timer.Reset(time.Duration(timeout) * time.Millisecond)
+		n.mu.Lock()
+		state := n.state
+		n.mu.Unlock()
+
+		if state != Leader {
+			n.events <- electionTimeout{}
 		}
+		n.resetElectionTimer()
 	}
 }
 
 // This timer only needs to run if there is a leader waste of CPU cycles
-func (n *Node) runHeartBeatTimer() {
-	timeout := n.config.HeartbeatTimeout
-	timer := time.NewTimer(time.Duration(timeout) * time.Millisecond)
-
+func (n *Node) runHeartbeatTimer() {
 	for {
-		select {
-		case <-timer.C:
-			if n.state == Leader {
-				n.events <- heartbeatTimeout{}
-			}
-			timer.Reset(time.Duration(timeout) * time.Millisecond)
+		<-n.heartbeatTimer.C
 
-		case <-n.resetHeartbeatTimer:
-			// Stop the timer and drain if necessary
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
-			timer.Reset(time.Duration(timeout) * time.Millisecond)
+		n.mu.Lock()
+		state := n.state
+		n.mu.Unlock()
+
+		if state == Leader {
+			n.events <- heartbeatTimeout{}
 		}
+		n.resetHeartbeatTimer()
 	}
 }
 
@@ -356,7 +317,7 @@ func (n *Node) handleElectionTimeout() {
 		} else {
 			n.state = Follower
 			n.votedFor = ""
-			n.resetElectionTimer <- struct{}{}
+			n.resetElectionTimer()
 		}
 	}
 }
@@ -422,6 +383,8 @@ func (n *Node) handleAppendEntries(req *types.AppendEntriesRequest) *types.Appen
 		n.appendEntries(req.PrevLogIndex, req.LeaderCommit, req.Entries)
 		ack := req.PrevLogIndex + len(req.Entries)
 		log.Printf("[Node %s] Accepted append entries %+v", n.id, req)
+
+		n.resetElectionTimer()
 		return &types.AppendEntriesResponse{
 			FollowerId: n.id,
 			Term:       n.term,
@@ -560,4 +523,32 @@ func (n *Node) GetId() string {
 // 			break
 // 		}
 // 	}
+// }
+
+// buildAppendEntriesRequest constructs the RPC request for the given peer.
+// func (n *Node) buildAppendEntriesRequest(peer string, isHeartbeat bool) (*types.AppendEntriesRequest, int) {
+// 	prevIndex := n.nextIndex[peer] - 1
+// 	if prevIndex < 0 {
+// 		prevIndex = 0
+// 	}
+
+// 	var prevLogTerm int
+// 	if len(n.logs) > 0 && prevIndex < len(n.logs) {
+// 		prevLogTerm = n.logs[prevIndex].Term
+// 	}
+
+// 	var entries []types.LogEntry
+
+// 	if !isHeartbeat {
+// 		logSlice := n.logs[n.nextIndex[peer]:]
+// 		entries = make([]types.LogEntry, len(logSlice))
+// 	}
+
+// 	return &types.AppendEntriesRequest{
+// 		Term:         n.term,
+// 		LeaderId:     n.id,
+// 		PrevLogIndex: prevIndex,
+// 		PrevLogTerm:  prevLogTerm,
+// 		Entries:      entries,
+// 	}, prevIndex
 // }

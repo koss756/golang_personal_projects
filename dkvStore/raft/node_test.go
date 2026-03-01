@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/koss756/dkvStore/types"
 	"github.com/stretchr/testify/assert"
@@ -48,23 +49,37 @@ func makeSequentialLogs(n int, startTerm int) []types.LogEntry {
 }
 
 func newTestNode(id string, peers []string, transport Client) *Node {
-	return &Node{
-		id:                  id,
-		state:               Follower,
-		term:                0,
-		peers:               peers,
-		transport:           transport,
-		events:              make(chan event, 10),
-		resetElectionTimer:  make(chan struct{}, 1),
-		resetHeartbeatTimer: make(chan struct{}, 1),
-		config: Config{
-			ElectionTimeoutLowerBound: 150,
-			ElectionTimeoutUpperBound: 300,
-			HeartbeatTimeout:          50,
-		},
+	conf := Config{
+		ElectionTimeoutLowerBound: 150,
+		ElectionTimeoutUpperBound: 300,
+		HeartbeatTimeout:          50,
 	}
-}
 
+	electionTimeout := randomizedTimeout(conf.ElectionTimeoutLowerBound, conf.ElectionTimeoutUpperBound)
+
+	n := &Node{
+		id:             id,
+		state:          Follower,
+		term:           0,
+		peers:          peers,
+		transport:      transport,
+		events:         make(chan event, 10),
+		config:         conf,
+		electionTimer:  time.NewTimer(time.Duration(electionTimeout) * time.Millisecond),
+		heartbeatTimer: time.NewTimer(time.Duration(conf.HeartbeatTimeout) * time.Millisecond),
+	}
+
+	if !n.heartbeatTimer.Stop() {
+		<-n.heartbeatTimer.C
+	}
+	// Also stop election timer so it doesn't fire during tests
+	if !n.electionTimer.Stop() {
+		<-n.electionTimer.C
+	}
+
+	n.votesNeeded = (len(peers) / 2) + 1
+	return n
+}
 func TestElectionTimeout_WinsElection_BecomesLeader(t *testing.T) {
 	transport := new(MockTransport)
 	transport.On("RequestVote", mock.Anything, mock.Anything, mock.Anything).
