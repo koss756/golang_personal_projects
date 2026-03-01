@@ -14,17 +14,17 @@ import (
 )
 
 func main() {
-	conf := raft.Config{ElectionTimeoutLowerBound: 1500, ElectionTimeoutUpperBound: 3000, HeartbeatTimeout: 1000}
+	conf := raft.Config{ElectionTimeoutLowerBound: 1500, ElectionTimeoutUpperBound: 3000, HeartbeatTimeout: 100}
 
 	var (
-		id       = flag.Int("id", 0, "node id")
+		id       = flag.String("id", "", "node id (e.g. :9001)")
 		grpcAddr = flag.String("grpc-addr", "", "listen address (e.g. :9000)")
 		httpAddr = flag.String("http-addr", "", "listen address (e.g. :8000)")
 		peers    = flag.String("peers", "", "comma-separated peer addresses")
 	)
 	flag.Parse()
 
-	if *id == 0 || *grpcAddr == "" || *httpAddr == "" {
+	if *id == "" || *grpcAddr == "" || *httpAddr == "" {
 		log.Fatal("id, grpc-addr, and http-addr are required")
 	}
 

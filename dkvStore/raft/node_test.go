@@ -47,7 +47,7 @@ func makeSequentialLogs(n int, startTerm int) []types.LogEntry {
 	return logs
 }
 
-func newTestNode(id int, peers []string, transport Client) *Node {
+func newTestNode(id string, peers []string, transport Client) *Node {
 	return &Node{
 		id:                  id,
 		state:               Follower,
@@ -70,7 +70,7 @@ func TestElectionTimeout_WinsElection_BecomesLeader(t *testing.T) {
 	transport.On("RequestVote", mock.Anything, mock.Anything, mock.Anything).
 		Return(&types.RequestVoteResponse{Term: 1, VoteGranted: true}, nil)
 
-	node := newTestNode(1, []string{"peer2", "peer3"}, transport)
+	node := newTestNode("9001", []string{"peer2", "peer3"}, transport)
 	node.handleElectionTimeout()
 
 	assert.Equal(t, Leader, node.state)
@@ -83,7 +83,7 @@ func TestElectionTimeout_TermIncrements(t *testing.T) {
 	transport.On("RequestVote", mock.Anything, mock.Anything, mock.Anything).
 		Return(&types.RequestVoteResponse{Term: 3, VoteGranted: false}, nil)
 
-	node := newTestNode(1, []string{"peer2", "peer3", "peer4", "peer5"}, transport)
+	node := newTestNode(":9000", []string{"peer2", "peer3", "peer4", "peer5"}, transport)
 	node.term = 2
 	node.handleElectionTimeout()
 
@@ -94,14 +94,14 @@ func TestElectionTimeout_TermIncrements(t *testing.T) {
 func TestHandleRequestVote_GrantsVote(t *testing.T) {
 	transport := new(MockTransport)
 
-	node := newTestNode(2, []string{"peer1"}, transport)
+	node := newTestNode("9002", []string{"peer1"}, transport)
 	node.term = 1
-	node.votedFor = 0
+	node.votedFor = ""
 	node.logs = []types.LogEntry{}
 
 	req := &types.RequestVoteRequest{
 		Term:         1,
-		CandidateID:  1,
+		CandidateID:  "9001",
 		LastLogTerm:  0,
 		LastLogIndex: -1,
 	}
@@ -110,20 +110,20 @@ func TestHandleRequestVote_GrantsVote(t *testing.T) {
 
 	assert.True(t, resp.VoteGranted)
 	assert.Equal(t, 1, node.term)
-	assert.Equal(t, 1, node.votedFor)
+	assert.Equal(t, "9001", node.votedFor)
 }
 
 func TestHandleRequestVote_AlreadyVOtedInTerm(t *testing.T) {
 	transport := new(MockTransport)
 
-	node := newTestNode(2, []string{"peer1"}, transport)
+	node := newTestNode("9002", []string{"peer1"}, transport)
 	node.term = 1
-	node.votedFor = 2 // Some random id other than req
+	node.votedFor = "9002" // Some random id other than req
 	node.logs = []types.LogEntry{}
 
 	req := &types.RequestVoteRequest{
 		Term:         1,
-		CandidateID:  1,
+		CandidateID:  "9001",
 		LastLogTerm:  0,
 		LastLogIndex: 0,
 	}
@@ -136,14 +136,14 @@ func TestHandleRequestVote_AlreadyVOtedInTerm(t *testing.T) {
 func TestHandleRequestVote_OutOfDateTerm(t *testing.T) {
 	transport := new(MockTransport)
 
-	node := newTestNode(2, []string{"peer1"}, transport)
+	node := newTestNode("9002", []string{"peer1"}, transport)
 	node.term = 1
-	node.votedFor = 0
+	node.votedFor = ""
 	node.logs = []types.LogEntry{}
 
 	req := &types.RequestVoteRequest{
 		Term:         node.term + 5,
-		CandidateID:  1,
+		CandidateID:  "9001",
 		LastLogTerm:  0,
 		LastLogIndex: -1,
 	}
@@ -157,16 +157,16 @@ func TestHandleRequestVote_OutOfDateTerm(t *testing.T) {
 func TestHandleRequestVote_GrantVote_WithLogs(t *testing.T) {
 	transport := new(MockTransport)
 
-	node := newTestNode(2, []string{"peer1"}, transport)
+	node := newTestNode("9002", []string{"peer1"}, transport)
 	node.term = 1
-	node.votedFor = 0
+	node.votedFor = ""
 	node.logs = makeSequentialLogs(5, 1)
 
 	fmt.Printf("Logs: %v", node.logs)
 
 	req := &types.RequestVoteRequest{
 		Term:         5,
-		CandidateID:  1,
+		CandidateID:  "9001",
 		LastLogTerm:  5,
 		LastLogIndex: 5,
 	}
@@ -179,16 +179,16 @@ func TestHandleRequestVote_GrantVote_WithLogs(t *testing.T) {
 func TestHandleRequestVote_VoteDenied_RecieverHasMorelogs(t *testing.T) {
 	transport := new(MockTransport)
 
-	node := newTestNode(2, []string{"peer1"}, transport)
+	node := newTestNode("9002", []string{"peer1"}, transport)
 	node.term = 1
-	node.votedFor = 0
+	node.votedFor = ""
 	node.logs = makeSequentialLogs(5, 1)
 
 	fmt.Printf("Logs: %v", node.logs)
 
 	req := &types.RequestVoteRequest{
 		Term:         5,
-		CandidateID:  1,
+		CandidateID:  "9001",
 		LastLogTerm:  5,
 		LastLogIndex: 3,
 	}
@@ -201,16 +201,16 @@ func TestHandleRequestVote_VoteDenied_RecieverHasMorelogs(t *testing.T) {
 func TestHandleRequestVote_VoteDenied_RecieverHasHigherTerm(t *testing.T) {
 	transport := new(MockTransport)
 
-	node := newTestNode(2, []string{"peer1"}, transport)
+	node := newTestNode("9002", []string{"peer1"}, transport)
 	node.term = 6
-	node.votedFor = 0
+	node.votedFor = ""
 	node.logs = makeSequentialLogs(5, 1)
 
 	fmt.Printf("Logs: %v", node.logs)
 
 	req := &types.RequestVoteRequest{
 		Term:         5,
-		CandidateID:  1,
+		CandidateID:  "9001",
 		LastLogTerm:  5,
 		LastLogIndex: 3,
 	}

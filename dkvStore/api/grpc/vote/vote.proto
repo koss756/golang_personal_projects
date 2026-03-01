@@ -3,7 +3,7 @@ syntax = "proto3";
 option go_package = "github.com/koss756/dkvStore/api/vote";
 
 message RequestVoteMsg {
-    int64 candidateId = 1;
+    string candidateId = 1;
     int64 term = 2; // candidate's term
     int64 lastLogIndex = 3; // index of candidate's last log entry
     int64 lastLogTerm = 4; // term of candidate's last log entry

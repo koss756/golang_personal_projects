@@ -9,7 +9,7 @@ message LogEntry {
 
 message AppendEntriesMsg {
   int64 term = 1;           // leader’s term
-  int64 leaderId = 2;       // so follower can redirect clients
+  string leaderId = 2;       // so follower can redirect clients
   int64 prevLogIndex = 3;   // index of log entry immediately preceding new ones
   int64 prevLogTerm = 4;    // term of prevLogIndex entry
   repeated LogEntry entries = 5; // log entries to store (empty for heartbeat)
@@ -17,8 +17,10 @@ message AppendEntriesMsg {
 }
 
 message AppendEntriesResponse {
-  int64 term = 1;
-  bool success = 2;
+  string followerID = 1;
+  int64 term = 2;
+  int64 ack = 3;
+  bool success = 4;
 }
 
 service LogService {

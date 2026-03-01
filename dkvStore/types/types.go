@@ -2,7 +2,7 @@ package types
 
 type RequestVoteRequest struct {
 	Term         int
-	CandidateID  int
+	CandidateID  string
 	LastLogIndex int
 	LastLogTerm  int
 }
@@ -19,7 +19,7 @@ type LogEntry struct {
 
 type AppendEntriesRequest struct {
 	Term         int
-	LeaderId     int
+	LeaderId     string
 	PrevLogIndex int
 	PrevLogTerm  int
 	Entries      []LogEntry
@@ -27,6 +27,8 @@ type AppendEntriesRequest struct {
 }
 
 type AppendEntriesResponse struct {
-	Term    int
-	Success bool
+	FollowerId string
+	Term       int
+	Ack        int
+	Success    bool
 }

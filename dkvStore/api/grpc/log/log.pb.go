@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v3.21.12
-// source: api/log/log.proto
+// source: api/grpc/log/log.proto
 
 package log
 
@@ -31,7 +31,7 @@ type LogEntry struct {
 
 func (x *LogEntry) Reset() {
 	*x = LogEntry{}
-	mi := &file_api_log_log_proto_msgTypes[0]
+	mi := &file_api_grpc_log_log_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -43,7 +43,7 @@ func (x *LogEntry) String() string {
 func (*LogEntry) ProtoMessage() {}
 
 func (x *LogEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_api_log_log_proto_msgTypes[0]
+	mi := &file_api_grpc_log_log_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -56,7 +56,7 @@ func (x *LogEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogEntry.ProtoReflect.Descriptor instead.
 func (*LogEntry) Descriptor() ([]byte, []int) {
-	return file_api_log_log_proto_rawDescGZIP(), []int{0}
+	return file_api_grpc_log_log_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *LogEntry) GetTerm() int64 {
@@ -76,7 +76,7 @@ func (x *LogEntry) GetCommand() []byte {
 type AppendEntriesMsg struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Term          int64                  `protobuf:"varint,1,opt,name=term,proto3" json:"term,omitempty"`                 // leader’s term
-	LeaderId      int64                  `protobuf:"varint,2,opt,name=leaderId,proto3" json:"leaderId,omitempty"`         // so follower can redirect clients
+	LeaderId      string                 `protobuf:"bytes,2,opt,name=leaderId,proto3" json:"leaderId,omitempty"`          // so follower can redirect clients
 	PrevLogIndex  int64                  `protobuf:"varint,3,opt,name=prevLogIndex,proto3" json:"prevLogIndex,omitempty"` // index of log entry immediately preceding new ones
 	PrevLogTerm   int64                  `protobuf:"varint,4,opt,name=prevLogTerm,proto3" json:"prevLogTerm,omitempty"`   // term of prevLogIndex entry
 	Entries       []*LogEntry            `protobuf:"bytes,5,rep,name=entries,proto3" json:"entries,omitempty"`            // log entries to store (empty for heartbeat)
@@ -87,7 +87,7 @@ type AppendEntriesMsg struct {
 
 func (x *AppendEntriesMsg) Reset() {
 	*x = AppendEntriesMsg{}
-	mi := &file_api_log_log_proto_msgTypes[1]
+	mi := &file_api_grpc_log_log_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -99,7 +99,7 @@ func (x *AppendEntriesMsg) String() string {
 func (*AppendEntriesMsg) ProtoMessage() {}
 
 func (x *AppendEntriesMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_api_log_log_proto_msgTypes[1]
+	mi := &file_api_grpc_log_log_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -112,7 +112,7 @@ func (x *AppendEntriesMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppendEntriesMsg.ProtoReflect.Descriptor instead.
 func (*AppendEntriesMsg) Descriptor() ([]byte, []int) {
-	return file_api_log_log_proto_rawDescGZIP(), []int{1}
+	return file_api_grpc_log_log_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *AppendEntriesMsg) GetTerm() int64 {
@@ -122,11 +122,11 @@ func (x *AppendEntriesMsg) GetTerm() int64 {
 	return 0
 }
 
-func (x *AppendEntriesMsg) GetLeaderId() int64 {
+func (x *AppendEntriesMsg) GetLeaderId() string {
 	if x != nil {
 		return x.LeaderId
 	}
-	return 0
+	return ""
 }
 
 func (x *AppendEntriesMsg) GetPrevLogIndex() int64 {
@@ -159,15 +159,17 @@ func (x *AppendEntriesMsg) GetLeaderCommit() int64 {
 
 type AppendEntriesResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Term          int64                  `protobuf:"varint,1,opt,name=term,proto3" json:"term,omitempty"`
-	Success       bool                   `protobuf:"varint,2,opt,name=success,proto3" json:"success,omitempty"`
+	FollowerID    string                 `protobuf:"bytes,1,opt,name=followerID,proto3" json:"followerID,omitempty"`
+	Term          int64                  `protobuf:"varint,2,opt,name=term,proto3" json:"term,omitempty"`
+	Ack           int64                  `protobuf:"varint,3,opt,name=ack,proto3" json:"ack,omitempty"`
+	Success       bool                   `protobuf:"varint,4,opt,name=success,proto3" json:"success,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *AppendEntriesResponse) Reset() {
 	*x = AppendEntriesResponse{}
-	mi := &file_api_log_log_proto_msgTypes[2]
+	mi := &file_api_grpc_log_log_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -179,7 +181,7 @@ func (x *AppendEntriesResponse) String() string {
 func (*AppendEntriesResponse) ProtoMessage() {}
 
 func (x *AppendEntriesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_log_log_proto_msgTypes[2]
+	mi := &file_api_grpc_log_log_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -192,12 +194,26 @@ func (x *AppendEntriesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AppendEntriesResponse.ProtoReflect.Descriptor instead.
 func (*AppendEntriesResponse) Descriptor() ([]byte, []int) {
-	return file_api_log_log_proto_rawDescGZIP(), []int{2}
+	return file_api_grpc_log_log_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *AppendEntriesResponse) GetFollowerID() string {
+	if x != nil {
+		return x.FollowerID
+	}
+	return ""
 }
 
 func (x *AppendEntriesResponse) GetTerm() int64 {
 	if x != nil {
 		return x.Term
+	}
+	return 0
+}
+
+func (x *AppendEntriesResponse) GetAck() int64 {
+	if x != nil {
+		return x.Ack
 	}
 	return 0
 }
@@ -209,47 +225,51 @@ func (x *AppendEntriesResponse) GetSuccess() bool {
 	return false
 }
 
-var File_api_log_log_proto protoreflect.FileDescriptor
+var File_api_grpc_log_log_proto protoreflect.FileDescriptor
 
-const file_api_log_log_proto_rawDesc = "" +
+const file_api_grpc_log_log_proto_rawDesc = "" +
 	"\n" +
-	"\x11api/log/log.proto\"8\n" +
+	"\x16api/grpc/log/log.proto\"8\n" +
 	"\bLogEntry\x12\x12\n" +
 	"\x04term\x18\x01 \x01(\x03R\x04term\x12\x18\n" +
 	"\acommand\x18\x02 \x01(\fR\acommand\"\xd1\x01\n" +
 	"\x10AppendEntriesMsg\x12\x12\n" +
 	"\x04term\x18\x01 \x01(\x03R\x04term\x12\x1a\n" +
-	"\bleaderId\x18\x02 \x01(\x03R\bleaderId\x12\"\n" +
+	"\bleaderId\x18\x02 \x01(\tR\bleaderId\x12\"\n" +
 	"\fprevLogIndex\x18\x03 \x01(\x03R\fprevLogIndex\x12 \n" +
 	"\vprevLogTerm\x18\x04 \x01(\x03R\vprevLogTerm\x12#\n" +
 	"\aentries\x18\x05 \x03(\v2\t.LogEntryR\aentries\x12\"\n" +
-	"\fLeaderCommit\x18\x06 \x01(\x03R\fLeaderCommit\"E\n" +
-	"\x15AppendEntriesResponse\x12\x12\n" +
-	"\x04term\x18\x01 \x01(\x03R\x04term\x12\x18\n" +
-	"\asuccess\x18\x02 \x01(\bR\asuccess2J\n" +
+	"\fLeaderCommit\x18\x06 \x01(\x03R\fLeaderCommit\"w\n" +
+	"\x15AppendEntriesResponse\x12\x1e\n" +
+	"\n" +
+	"followerID\x18\x01 \x01(\tR\n" +
+	"followerID\x12\x12\n" +
+	"\x04term\x18\x02 \x01(\x03R\x04term\x12\x10\n" +
+	"\x03ack\x18\x03 \x01(\x03R\x03ack\x12\x18\n" +
+	"\asuccess\x18\x04 \x01(\bR\asuccess2J\n" +
 	"\n" +
 	"LogService\x12<\n" +
 	"\rAppendEntries\x12\x11.AppendEntriesMsg\x1a\x16.AppendEntriesResponse\"\x00B%Z#github.com/koss756/dkvStore/api/logb\x06proto3"
 
 var (
-	file_api_log_log_proto_rawDescOnce sync.Once
-	file_api_log_log_proto_rawDescData []byte
+	file_api_grpc_log_log_proto_rawDescOnce sync.Once
+	file_api_grpc_log_log_proto_rawDescData []byte
 )
 
-func file_api_log_log_proto_rawDescGZIP() []byte {
-	file_api_log_log_proto_rawDescOnce.Do(func() {
-		file_api_log_log_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_api_log_log_proto_rawDesc), len(file_api_log_log_proto_rawDesc)))
+func file_api_grpc_log_log_proto_rawDescGZIP() []byte {
+	file_api_grpc_log_log_proto_rawDescOnce.Do(func() {
+		file_api_grpc_log_log_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_api_grpc_log_log_proto_rawDesc), len(file_api_grpc_log_log_proto_rawDesc)))
 	})
-	return file_api_log_log_proto_rawDescData
+	return file_api_grpc_log_log_proto_rawDescData
 }
 
-var file_api_log_log_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
-var file_api_log_log_proto_goTypes = []any{
+var file_api_grpc_log_log_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_api_grpc_log_log_proto_goTypes = []any{
 	(*LogEntry)(nil),              // 0: LogEntry
 	(*AppendEntriesMsg)(nil),      // 1: AppendEntriesMsg
 	(*AppendEntriesResponse)(nil), // 2: AppendEntriesResponse
 }
-var file_api_log_log_proto_depIdxs = []int32{
+var file_api_grpc_log_log_proto_depIdxs = []int32{
 	0, // 0: AppendEntriesMsg.entries:type_name -> LogEntry
 	1, // 1: LogService.AppendEntries:input_type -> AppendEntriesMsg
 	2, // 2: LogService.AppendEntries:output_type -> AppendEntriesResponse
@@ -260,26 +280,26 @@ var file_api_log_log_proto_depIdxs = []int32{
 	0, // [0:1] is the sub-list for field type_name
 }
 
-func init() { file_api_log_log_proto_init() }
-func file_api_log_log_proto_init() {
-	if File_api_log_log_proto != nil {
+func init() { file_api_grpc_log_log_proto_init() }
+func file_api_grpc_log_log_proto_init() {
+	if File_api_grpc_log_log_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_log_log_proto_rawDesc), len(file_api_log_log_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_grpc_log_log_proto_rawDesc), len(file_api_grpc_log_log_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_api_log_log_proto_goTypes,
-		DependencyIndexes: file_api_log_log_proto_depIdxs,
-		MessageInfos:      file_api_log_log_proto_msgTypes,
+		GoTypes:           file_api_grpc_log_log_proto_goTypes,
+		DependencyIndexes: file_api_grpc_log_log_proto_depIdxs,
+		MessageInfos:      file_api_grpc_log_log_proto_msgTypes,
 	}.Build()
-	File_api_log_log_proto = out.File
-	file_api_log_log_proto_goTypes = nil
-	file_api_log_log_proto_depIdxs = nil
+	File_api_grpc_log_log_proto = out.File
+	file_api_grpc_log_log_proto_goTypes = nil
+	file_api_grpc_log_log_proto_depIdxs = nil
 }

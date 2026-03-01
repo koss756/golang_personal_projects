@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/koss756/dkvStore/types"
@@ -23,14 +22,15 @@ type Config struct {
 
 type Node struct {
 	mu          sync.RWMutex
-	id          int
+	id          string // port number
 	state       NodeState
 	term        int
-	votedFor    int
-	leaderId    int
+	votedFor    string
+	leaderId    string
 	logs        []types.LogEntry
 	votesNeeded int
-	peers       []string
+
+	peers []string // array of ports
 
 	// index of highest log entry known to be committed (initialized to 0, increases monotonically)
 	commitIndex int
@@ -58,7 +58,7 @@ type Node struct {
 	transport           Client
 }
 
-func NewNode(id int, peers []string, rpcClient Client, conf Config) *Node {
+func NewNode(id string, peers []string, rpcClient Client, conf Config) *Node {
 	n := &Node{
 		id:                  id,
 		state:               Follower,
@@ -79,7 +79,7 @@ func NewNode(id int, peers []string, rpcClient Client, conf Config) *Node {
 }
 
 func (n *Node) Start() {
-	log.Printf("[Node %d] Started", n.id)
+	log.Printf("[Node %s] Started", n.id)
 	for {
 		ev := <-n.events
 		n.handleEvent(ev)
@@ -89,7 +89,7 @@ func (n *Node) Start() {
 func (n *Node) SubmitCommand(ctx context.Context, cmd []byte) error {
 	// If not leader, return error or redirect
 	if n.state != Leader {
-		return fmt.Errorf("%d", n.leaderId)
+		return fmt.Errorf("%s", n.leaderId)
 	}
 
 	n.events <- commandEvent{cmd: cmd}
@@ -106,7 +106,7 @@ func (n *Node) BroadCastVote(req *types.RequestVoteRequest, votes *[]types.Reque
 			return
 		}
 
-		log.Printf("[Node %d] Voted %t", n.id, resp.VoteGranted)
+		log.Printf("[Node %s] Voted %t", n.id, resp.VoteGranted)
 
 		if n.state == Candidate && resp.Term == n.term && resp.VoteGranted {
 			mu.Lock()
@@ -115,33 +115,33 @@ func (n *Node) BroadCastVote(req *types.RequestVoteRequest, votes *[]types.Reque
 		} else if resp.Term > n.term {
 			n.term = resp.Term
 			n.updateState(Follower)
-			n.votedFor = 0
+			n.votedFor = ""
 			n.resetElectionTimer <- struct{}{}
 		}
 	})
 }
 
 // BroadcastEntries sends AppendEntries RPCs to all peers and returns the number of acknowledgements (including self).
-func (n *Node) BroadcastEntries(isHeartbeat bool) int {
-	var acceptedCount int32 = 1 // count self
-	var wg sync.WaitGroup
+// func (n *Node) BroadcastEntries(isHeartbeat bool) int {
+// 	var acceptedCount int32 = 1 // count self
+// 	var wg sync.WaitGroup
 
-	for _, peer := range n.peers {
-		wg.Add(1)
-		go func(p string) {
-			defer wg.Done()
-			if n.replicateToPeer(p, isHeartbeat) {
-				atomic.AddInt32(&acceptedCount, 1)
-			}
-		}(peer)
-	}
+// 	for _, peer := range n.peers {
+// 		wg.Add(1)
+// 		go func(p string) {
+// 			defer wg.Done()
+// 			if n.replicateToPeer(p, isHeartbeat) {
+// 				atomic.AddInt32(&acceptedCount, 1)
+// 			}
+// 		}(peer)
+// 	}
 
-	wg.Wait()
-	return int(acceptedCount)
-}
+// 	wg.Wait()
+// 	return int(acceptedCount)
+// }
 
 // replicateToPeer handles the retry loop for a single peer, returning true if the peer acknowledged.
-func (n *Node) replicateToPeer(peer string, req types.AppendEntriesRequest) bool {
+func (n *Node) replicateToPeer(peer string, req *types.AppendEntriesRequest) (*types.AppendEntriesResponse, error) {
 	const timeout = 500 * time.Millisecond
 
 	for {
@@ -153,33 +153,8 @@ func (n *Node) replicateToPeer(peer string, req types.AppendEntriesRequest) bool
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		resp, err := n.transport.AppendEntries(ctx, peer, req)
 
-		if len(req.Entries) > 0 {
-			log.Printf("\n[Node %d] AppendEntries sent to %s with resp: %+v\n", n.id, peer, resp)
-		}
-
 		cancel()
-
-		if err != nil {
-			log.Printf("Failed to send entries to %s: %s", peer, err)
-			return false
-		}
-
-		if resp.Success {
-			if !isHeartbeat {
-				n.nextIndex[peer] = prevIndex + len(req.Entries) + 1
-				n.matchIndex[peer] = n.nextIndex[peer] - 1
-			}
-			return true
-		}
-
-		if isHeartbeat {
-			return false
-		}
-
-		// Decrement nextIndex and retry
-		if !n.decrementNextIndex(peer) {
-			return false
-		}
+		return resp, err
 	}
 }
 
@@ -195,13 +170,11 @@ func (n *Node) buildAppendEntriesRequest(peer string, isHeartbeat bool) (*types.
 		prevLogTerm = n.logs[prevIndex].Term
 	}
 
-	var entries []*types.LogEntry
+	var entries []types.LogEntry
+
 	if !isHeartbeat {
 		logSlice := n.logs[n.nextIndex[peer]:]
-		entries = make([]*types.LogEntry, len(logSlice))
-		for i := range logSlice {
-			entries[i] = &logSlice[i]
-		}
+		entries = make([]types.LogEntry, len(logSlice))
 	}
 
 	return &types.AppendEntriesRequest{
@@ -211,19 +184,6 @@ func (n *Node) buildAppendEntriesRequest(peer string, isHeartbeat bool) (*types.
 		PrevLogTerm:  prevLogTerm,
 		Entries:      entries,
 	}, prevIndex
-}
-
-// decrementNextIndex steps back the nextIndex for a peer during log conflict resolution.
-// Returns false if we've bottomed out and should give up.
-func (n *Node) decrementNextIndex(peer string) bool {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	if n.nextIndex[peer] > 1 {
-		n.nextIndex[peer]--
-		return true
-	}
-	return false
 }
 
 func (n *Node) Elect() {
@@ -236,7 +196,7 @@ func (n *Node) Elect() {
 		n.nextIndex[peer] = len(n.logs) // sentLength
 		n.matchIndex[peer] = 0          //ackedLength
 	}
-	log.Printf("[Node  %d] Elected Leader", n.id)
+	log.Printf("[Node  %s] Elected Leader", n.id)
 	n.resetElectionTimer <- struct{}{}
 	n.resetHeartbeatTimer <- struct{}{}
 }
@@ -346,10 +306,10 @@ func (n *Node) handleEvent(ev event) {
 	switch e := ev.(type) {
 
 	case electionTimeout:
-		// log.Printf("[State: %s] Election timeout event", n.state)
+		log.Printf("[State: %s] Election timeout event", n.state)
 		n.handleElectionTimeout()
 	case heartbeatTimeout:
-		// log.Printf("[State: %s] Heartbeat timeout event", n.state)
+		log.Printf("[State: %s] Heartbeat timeout event", n.state)
 		n.handleHeartbeatTimeout()
 	case requestVoteEvent:
 		resp := n.handleRequestVote(e.req)
@@ -395,7 +355,7 @@ func (n *Node) handleElectionTimeout() {
 			n.Elect()
 		} else {
 			n.state = Follower
-			n.votedFor = 0
+			n.votedFor = ""
 			n.resetElectionTimer <- struct{}{}
 		}
 	}
@@ -403,7 +363,16 @@ func (n *Node) handleElectionTimeout() {
 
 func (n *Node) handleHeartbeatTimeout() {
 	if n.state == Leader {
-		n.BroadcastEntries(true)
+		for _, peer := range n.peers {
+			req := n.replicateLog(peer, true)
+			resp, err := n.replicateToPeer(peer, req)
+
+			if err != nil {
+				log.Printf("Heartbeat was denied")
+			}
+
+			log.Printf("Heartbeat response %+v", resp)
+		}
 	}
 }
 
@@ -412,7 +381,7 @@ func (n *Node) handleRequestVote(req *types.RequestVoteRequest) *types.RequestVo
 	if req.Term > n.term {
 		n.term = req.Term
 		n.updateState(Follower)
-		n.votedFor = 0
+		n.votedFor = ""
 	}
 
 	lastTerm := 0
@@ -423,7 +392,7 @@ func (n *Node) handleRequestVote(req *types.RequestVoteRequest) *types.RequestVo
 	// verify candidate log is not out of date
 	logOk := (req.LastLogTerm > lastTerm) || (req.LastLogTerm == lastTerm && req.LastLogIndex >= len(n.logs)-1)
 
-	if req.Term == n.term && logOk && (n.votedFor == req.CandidateID || n.votedFor == 0) {
+	if req.Term == n.term && logOk && (n.votedFor == req.CandidateID || n.votedFor == "") {
 		n.votedFor = req.CandidateID
 		return &types.RequestVoteResponse{
 			Term:        n.term,
@@ -437,59 +406,60 @@ func (n *Node) handleRequestVote(req *types.RequestVoteRequest) *types.RequestVo
 	}
 }
 
-func (n *Node) hasMatchingLog(prevLogIndex, prevLogTerm int) bool {
-	if prevLogIndex < 0 {
-		return true // no previous entry to check
-	}
-
-	if prevLogIndex >= len(n.logs) {
-		return true
-	}
-
-	if n.logs[prevLogIndex].Term != prevLogTerm {
-		log.Printf("Terms do not match node: %d, Leader: %d", n.logs[prevLogIndex].Term, prevLogTerm)
-		return false
-	}
-
-	return true
-}
-
-func (n *Node) hasConflictedLogs(req *types.AppendEntriesRequest) {
-	for i, entry := range req.Entries {
-		logIndex := req.PrevLogIndex + i + 1 // 1-based
-
-		if logIndex <= len(n.logs) {
-			if n.logs[logIndex-1].Term != entry.Term {
-				// Conflict: truncate everything from here and append the rest
-				n.logs = n.logs[:logIndex-1]
-				n.logs = append(n.logs, *entry)
-				n.logs = append(n.logs, toValueSlice(req.Entries[i+1:])...)
-				break
-			}
-			// Already matches, skip
-		} else {
-			// Past end of our log, just append remaining
-			n.logs = append(n.logs, toValueSlice(req.Entries[i:])...)
-			break
-		}
-	}
-}
-
 func (n *Node) handleAppendEntries(req *types.AppendEntriesRequest) *types.AppendEntriesResponse {
 	if req.Term > n.term {
 		n.term = req.Term
 		n.updateState(Follower)
-		n.votedFor = 0
+		n.votedFor = ""
 		n.leaderId = req.LeaderId
+
+		log.Printf("WE HIT?")
 	}
 
 	logOk := (len(n.logs) >= req.PrevLogIndex) && (req.PrevLogIndex == 0 || n.logs[req.PrevLogIndex-1].Term == req.PrevLogTerm)
 
 	if req.Term == n.term && logOk {
-		// APPEND_ENTRIES(req.PrevLogIndex, req.LeaderCommit, req.Entries) IMPLEMENT
+		n.appendEntries(req.PrevLogIndex, req.LeaderCommit, req.Entries)
 		ack := req.PrevLogIndex + len(req.Entries)
+		log.Printf("[Node %s] Accepted append entries %+v", n.id, req)
+		return &types.AppendEntriesResponse{
+			FollowerId: n.id,
+			Term:       n.term,
+			Ack:        ack,
+			Success:    true,
+		}
 	} else {
+		log.Printf("[Node %s] Denied append entries %+v", n.id, req)
+		return &types.AppendEntriesResponse{
+			FollowerId: n.id,
+			Term:       n.term,
+			Ack:        0,
+			Success:    false,
+		}
+	}
+}
 
+func (n *Node) appendEntries(prevLogIndex int, leaderCommit int, entries []types.LogEntry) {
+	if len(entries) > 0 && len(n.logs) > prevLogIndex {
+		index := min(len(n.logs), prevLogIndex+len(entries)) - 1
+
+		if n.logs[index].Term != entries[index-prevLogIndex].Term {
+			n.logs = n.logs[:prevLogIndex]
+		}
+	}
+
+	if prevLogIndex+len(entries) > len(n.logs) {
+		for i := len(n.logs) - prevLogIndex; i <= len(entries)-1; i++ {
+			n.logs = append(n.logs, entries[i])
+		}
+	}
+
+	if leaderCommit > n.commitIndex {
+		for i := n.commitIndex; i < leaderCommit; i++ {
+			// deliver n.logs[i].cmd to app
+			log.Printf("Command delivered")
+		}
+		n.commitIndex = leaderCommit
 	}
 }
 
@@ -500,20 +470,21 @@ func (n *Node) handleCommand(cmd []byte) {
 	}
 
 	n.logs = append(n.logs, logEntry)
-	// n.matchIndex[n.id] := len(n.logs)  Is this needed?
+	// n.matchIndex[n.id] := len(n.logs)
 
 	for _, peer := range n.peers {
-		n.replicateLog(peer)
+		req := n.replicateLog(peer, false)
+		n.replicateToPeer(peer, req)
 	}
 
-	acceptedCount := n.BroadcastEntries(false)
+	// acceptedCount := n.BroadcastEntries(false)
 
-	if acceptedCount > len(n.peers)/2+1 {
-		go func() { n.events <- commitLogEvent{cmd: cmd} }()
-	}
+	// if acceptedCount > len(n.peers)/2+1 {
+	// 	go func() { n.events <- commitLogEvent{cmd: cmd} }()
+	// }
 }
 
-func (n *Node) replicateLog(peer string, isHeartBeat bool) {
+func (n *Node) replicateLog(peer string, isHeartBeat bool) *types.AppendEntriesRequest {
 	prevLogIndex := n.nextIndex[peer] // index of the next log entry to send to follower
 
 	var entries []types.LogEntry
@@ -527,7 +498,7 @@ func (n *Node) replicateLog(peer string, isHeartBeat bool) {
 		prevLogTerm = n.logs[prevLogIndex-1].Term
 	}
 
-	req := &types.AppendEntriesRequest{
+	return &types.AppendEntriesRequest{
 		Term:         n.term,
 		LeaderId:     n.id,
 		PrevLogIndex: prevLogIndex,
@@ -549,6 +520,44 @@ func (n *Node) updateState(state NodeState) {
 	}
 }
 
-func (n *Node) GetId() int {
+func (n *Node) GetId() string {
 	return n.id
 }
+
+// func (n *Node) hasMatchingLog(prevLogIndex, prevLogTerm int) bool {
+// 	if prevLogIndex < 0 {
+// 		return true // no previous entry to check
+// 	}
+
+// 	if prevLogIndex >= len(n.logs) {
+// 		return true
+// 	}
+
+// 	if n.logs[prevLogIndex].Term != prevLogTerm {
+// 		log.Printf("Terms do not match node: %d, Leader: %d", n.logs[prevLogIndex].Term, prevLogTerm)
+// 		return false
+// 	}
+
+// 	return true
+// }
+
+// func (n *Node) hasConflictedLogs(req *types.AppendEntriesRequest) {
+// 	for i, entry := range req.Entries {
+// 		logIndex := req.PrevLogIndex + i + 1 // 1-based
+
+// 		if logIndex <= len(n.logs) {
+// 			if n.logs[logIndex-1].Term != entry.Term {
+// 				// Conflict: truncate everything from here and append the rest
+// 				n.logs = n.logs[:logIndex-1]
+// 				n.logs = append(n.logs, *entry)
+// 				n.logs = append(n.logs, toValueSlice(req.Entries[i+1:])...)
+// 				break
+// 			}
+// 			// Already matches, skip
+// 		} else {
+// 			// Past end of our log, just append remaining
+// 			n.logs = append(n.logs, toValueSlice(req.Entries[i:])...)
+// 			break
+// 		}
+// 	}
+// }

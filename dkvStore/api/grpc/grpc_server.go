@@ -16,11 +16,11 @@ import (
 type GRPCServer struct {
 	vote.UnimplementedVoteServiceServer
 	log.UnimplementedLogServiceServer
-	nodeID      int
+	nodeID      string
 	raftService raft.Server
 }
 
-func NewGRPCServer(nodeId int, raftService raft.Server) *GRPCServer {
+func NewGRPCServer(nodeId string, raftService raft.Server) *GRPCServer {
 	return &GRPCServer{nodeID: nodeId, raftService: raftService}
 }
 
@@ -30,7 +30,7 @@ func (s *GRPCServer) RequestVote(ctx context.Context, req *vote.RequestVoteMsg) 
 
 	raftReq := &types.RequestVoteRequest{
 		Term:         int(req.Term),
-		CandidateID:  int(req.CandidateId),
+		CandidateID:  string(req.CandidateId),
 		LastLogIndex: int(req.LastLogIndex),
 		LastLogTerm:  int(req.LastLogTerm),
 	}
@@ -48,21 +48,20 @@ func (s *GRPCServer) RequestVote(ctx context.Context, req *vote.RequestVoteMsg) 
 }
 
 func (s *GRPCServer) AppendEntries(ctx context.Context, req *log.AppendEntriesMsg) (*log.AppendEntriesResponse, error) {
-	// stdlog.Printf("[Node %d] Received Append entries", s.nodeID)
-
 	// Convert proto entries to Raft entries
-	entries := make([]*types.LogEntry, len(req.Entries))
-	for i, entry := range req.Entries {
-		entries[i] = &types.LogEntry{
-			Term:    int(entry.Term),
-			Command: entry.Command,
-			// Add other fields as needed
+	//TODO: move to util
+	entries := make([]types.LogEntry, len(req.Entries))
+
+	for i, e := range req.Entries {
+		entries[i] = types.LogEntry{
+			Term:    int(e.Term),
+			Command: e.Command,
 		}
 	}
 
 	raftReq := &types.AppendEntriesRequest{
 		Term:         int(req.Term),
-		LeaderId:     int(req.LeaderId),
+		LeaderId:     string(req.LeaderId),
 		PrevLogIndex: int(req.PrevLogIndex),
 		PrevLogTerm:  int(req.PrevLogTerm),
 		Entries:      entries,
@@ -81,7 +80,7 @@ func (s *GRPCServer) AppendEntries(ctx context.Context, req *log.AppendEntriesMs
 	}, nil
 }
 
-func StartServer(addr string, nodeID int, node *raft.Node) error {
+func StartServer(addr string, nodeID string, node *raft.Node) error {
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)

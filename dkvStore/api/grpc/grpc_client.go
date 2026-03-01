@@ -58,7 +58,7 @@ func (c *RaftClient) RequestVote(ctx context.Context, target string, req *types.
 
 	grpcReq := &vote.RequestVoteMsg{
 		Term:         int64(req.Term),
-		CandidateId:  int64(req.CandidateID),
+		CandidateId:  string(req.CandidateID),
 		LastLogIndex: int64(req.LastLogIndex),
 		LastLogTerm:  int64(req.LastLogTerm),
 	}
@@ -92,7 +92,7 @@ func (c *RaftClient) AppendEntries(ctx context.Context, target string, req *type
 
 	grpcReq := &log.AppendEntriesMsg{
 		Term:         int64(req.Term),
-		LeaderId:     int64(req.LeaderId),
+		LeaderId:     string(req.LeaderId),
 		PrevLogIndex: int64(req.PrevLogIndex),
 		PrevLogTerm:  int64(req.PrevLogTerm),
 		Entries:      entries,
