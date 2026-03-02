@@ -124,25 +124,6 @@ func (n *Node) BroadCastVote(req *types.RequestVoteRequest, votes *[]types.Reque
 	})
 }
 
-// BroadcastEntries sends AppendEntries RPCs to all peers and returns the number of acknowledgements (including self).
-// func (n *Node) BroadcastEntries(isHeartbeat bool) int {
-// 	var acceptedCount int32 = 1 // count self
-// 	var wg sync.WaitGroup
-
-// 	for _, peer := range n.peers {
-// 		wg.Add(1)
-// 		go func(p string) {
-// 			defer wg.Done()
-// 			if n.replicateToPeer(p, isHeartbeat) {
-// 				atomic.AddInt32(&acceptedCount, 1)
-// 			}
-// 		}(peer)
-// 	}
-
-// 	wg.Wait()
-// 	return int(acceptedCount)
-// }
-
 // replicateToPeer handles the retry loop for a single peer, returning true if the peer acknowledged.
 func (n *Node) replicateToPeer(peer string, req *types.AppendEntriesRequest) (*types.AppendEntriesResponse, error) {
 	const timeout = 500 * time.Millisecond
@@ -247,14 +228,11 @@ func (n *Node) runElectionTimer() {
 	}
 }
 
-// This timer only needs to run if there is a leader waste of CPU cycles
 func (n *Node) runHeartbeatTimer() {
 	for {
 		<-n.heartbeatTimer.C
 
-		n.mu.Lock()
 		state := n.state
-		n.mu.Unlock()
 
 		if state == Leader {
 			n.events <- heartbeatTimeout{}
@@ -373,11 +351,10 @@ func (n *Node) handleAppendEntries(req *types.AppendEntriesRequest) *types.Appen
 		n.updateState(Follower)
 		n.votedFor = ""
 		n.leaderId = req.LeaderId
-
-		log.Printf("WE HIT?")
 	}
 
-	logOk := (len(n.logs) >= req.PrevLogIndex) && (req.PrevLogIndex == 0 || n.logs[req.PrevLogIndex-1].Term == req.PrevLogTerm)
+	logOk := (len(n.logs) >= req.PrevLogIndex) && (req.PrevLogIndex == 0 || n.logs[req.PrevLogIndex].Term == req.PrevLogTerm)
+	log.Printf("Log is: %t", logOk)
 
 	if req.Term == n.term && logOk {
 		n.appendEntries(req.PrevLogIndex, req.LeaderCommit, req.Entries)
@@ -433,7 +410,7 @@ func (n *Node) handleCommand(cmd []byte) {
 	}
 
 	n.logs = append(n.logs, logEntry)
-	// n.matchIndex[n.id] := len(n.logs)
+	n.matchIndex[n.id] = len(n.logs)
 
 	for _, peer := range n.peers {
 		req := n.replicateLog(peer, false)
@@ -551,4 +528,23 @@ func (n *Node) GetId() string {
 // 		PrevLogTerm:  prevLogTerm,
 // 		Entries:      entries,
 // 	}, prevIndex
+// }
+
+// BroadcastEntries sends AppendEntries RPCs to all peers and returns the number of acknowledgements (including self).
+// func (n *Node) BroadcastEntries(isHeartbeat bool) int {
+// 	var acceptedCount int32 = 1 // count self
+// 	var wg sync.WaitGroup
+
+// 	for _, peer := range n.peers {
+// 		wg.Add(1)
+// 		go func(p string) {
+// 			defer wg.Done()
+// 			if n.replicateToPeer(p, isHeartbeat) {
+// 				atomic.AddInt32(&acceptedCount, 1)
+// 			}
+// 		}(peer)
+// 	}
+
+// 	wg.Wait()
+// 	return int(acceptedCount)
 // }
