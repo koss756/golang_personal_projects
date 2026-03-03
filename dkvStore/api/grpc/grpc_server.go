@@ -69,14 +69,17 @@ func (s *GRPCServer) AppendEntries(ctx context.Context, req *log.AppendEntriesMs
 	}
 
 	raftResp, err := s.raftService.RecieveAppendEntries(ctx, raftReq)
+	stdlog.Printf("RESP AT SERVER %+v", raftResp)
 	if err != nil {
 		return nil, err
 	}
 
 	// Convert from Raft domain to gRPC
 	return &log.AppendEntriesResponse{
-		Term:    int64(raftResp.Term),
-		Success: raftResp.Success,
+		FollowerId: raftResp.FollowerId,
+		Term:       int64(raftResp.Term),
+		Ack:        int64(raftResp.Ack),
+		Success:    raftResp.Success,
 	}, nil
 }
 

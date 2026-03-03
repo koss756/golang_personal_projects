@@ -89,6 +89,7 @@ func (n *Node) Start() {
 	}
 }
 
+// recives the command from http server
 func (n *Node) SubmitCommand(ctx context.Context, cmd []byte) error {
 	// If not leader, return error or redirect
 	if n.state != Leader {
@@ -99,7 +100,6 @@ func (n *Node) SubmitCommand(ctx context.Context, cmd []byte) error {
 	return nil
 }
 
-// use pointer to votes to modify slice directly
 func (n *Node) BroadCastVote(req *types.RequestVoteRequest, votes *[]types.RequestVoteResponse) {
 	var mu sync.Mutex
 
@@ -124,6 +124,24 @@ func (n *Node) BroadCastVote(req *types.RequestVoteRequest, votes *[]types.Reque
 	})
 }
 
+func (n *Node) broadcastAppendEntries() {
+	for _, peer := range n.peers {
+		req := n.replicateLog(peer, false)
+
+		go func(p string, r *types.AppendEntriesRequest) {
+			resp, err := n.replicateToPeer(p, r)
+			if err != nil {
+				return
+			}
+
+			n.events <- appendEntriesResponseEvent{
+				peer: p,
+				resp: resp,
+			}
+		}(peer, req)
+	}
+}
+
 // replicateToPeer handles the retry loop for a single peer, returning true if the peer acknowledged.
 func (n *Node) replicateToPeer(peer string, req *types.AppendEntriesRequest) (*types.AppendEntriesResponse, error) {
 	const timeout = 500 * time.Millisecond
@@ -136,6 +154,8 @@ func (n *Node) replicateToPeer(peer string, req *types.AppendEntriesRequest) (*t
 
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		resp, err := n.transport.AppendEntries(ctx, peer, req)
+
+		log.Printf("Raw Resp: %+v", resp)
 
 		cancel()
 		return resp, err
@@ -182,9 +202,6 @@ func (n *Node) HeartBeat() *types.LogEntry {
 }
 
 func (n *Node) RecieveRequestVote(ctx context.Context, req *types.RequestVoteRequest) (*types.RequestVoteResponse, error) {
-	// If RPC request contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
-	// n.isHigherTerm(req.Term)
-
 	respChan := make(chan *types.RequestVoteResponse, 1)
 
 	n.events <- requestVoteEvent{req: req, resp: respChan}
@@ -198,9 +215,6 @@ func (n *Node) RecieveRequestVote(ctx context.Context, req *types.RequestVoteReq
 }
 
 func (n *Node) RecieveAppendEntries(ctx context.Context, req *types.AppendEntriesRequest) (*types.AppendEntriesResponse, error) {
-	// If RPC request contains term T > currentTerm: set currentTerm = T, convert to follower (§5.1)
-	// n.isHigherTerm(req.Term)
-
 	respChan := make(chan *types.AppendEntriesResponse, 1)
 
 	n.events <- appendEntriesEvent{req: req, resp: respChan}
@@ -245,10 +259,8 @@ func (n *Node) handleEvent(ev event) {
 	switch e := ev.(type) {
 
 	case electionTimeout:
-		log.Printf("[State: %s] Election timeout event", n.state)
 		n.handleElectionTimeout()
 	case heartbeatTimeout:
-		log.Printf("[State: %s] Heartbeat timeout event", n.state)
 		n.handleHeartbeatTimeout()
 	case requestVoteEvent:
 		resp := n.handleRequestVote(e.req)
@@ -257,11 +269,13 @@ func (n *Node) handleEvent(ev event) {
 		resp := n.handleAppendEntries(e.req)
 		e.resp <- resp
 	case commandEvent:
-		log.Printf("command Event!")
 		n.handleCommand(e.cmd)
 	case commitLogEvent:
 		log.Printf("WE COMMIT THE LOG!")
+	case appendEntriesResponseEvent:
+		n.handleAppendEntriesResponse(e.peer, e.resp)
 	}
+
 }
 
 func (n *Node) handleElectionTimeout() {
@@ -311,6 +325,7 @@ func (n *Node) handleHeartbeatTimeout() {
 			}
 
 			log.Printf("Heartbeat response %+v", resp)
+			log.Printf("id response %s", resp.FollowerId)
 		}
 	}
 }
@@ -354,14 +369,12 @@ func (n *Node) handleAppendEntries(req *types.AppendEntriesRequest) *types.Appen
 	}
 
 	logOk := (len(n.logs) >= req.PrevLogIndex) && (req.PrevLogIndex == 0 || n.logs[req.PrevLogIndex].Term == req.PrevLogTerm)
-	log.Printf("Log is: %t", logOk)
 
 	if req.Term == n.term && logOk {
 		n.appendEntries(req.PrevLogIndex, req.LeaderCommit, req.Entries)
 		ack := req.PrevLogIndex + len(req.Entries)
-		log.Printf("[Node %s] Accepted append entries %+v", n.id, req)
-
 		n.resetElectionTimer()
+		log.Printf("FOLLOWER ID WHO ACCEPTED: %s", n.id)
 		return &types.AppendEntriesResponse{
 			FollowerId: n.id,
 			Term:       n.term,
@@ -369,7 +382,6 @@ func (n *Node) handleAppendEntries(req *types.AppendEntriesRequest) *types.Appen
 			Success:    true,
 		}
 	} else {
-		log.Printf("[Node %s] Denied append entries %+v", n.id, req)
 		return &types.AppendEntriesResponse{
 			FollowerId: n.id,
 			Term:       n.term,
@@ -414,14 +426,70 @@ func (n *Node) handleCommand(cmd []byte) {
 
 	for _, peer := range n.peers {
 		req := n.replicateLog(peer, false)
-		n.replicateToPeer(peer, req)
+		go n.sendAppendEntries(peer, req)
 	}
 
-	// acceptedCount := n.BroadcastEntries(false)
+	// for _, peer := range n.peers {
+	// 	req := n.replicateLog(peer, false)
+	// 	resp, err := n.replicateToPeer(peer, req)
 
-	// if acceptedCount > len(n.peers)/2+1 {
-	// 	go func() { n.events <- commitLogEvent{cmd: cmd} }()
+	// 	if err != nil {
+	// 		log.Printf("[WARNING] err revieved from %s", resp.FollowerId)
+	// 		return
+	// 	}
+
+	// 	if resp.Term == n.term && n.state == Leader {
+	// 		if resp.Success && resp.Ack >= n.matchIndex[peer] {
+	// 			n.nextIndex[peer] = resp.Ack
+	// 			n.matchIndex[peer] = resp.Ack
+	// 			// CommitLog()
+	// 		} else if n.nextIndex[peer] > 0 {
+	// 			n.nextIndex[peer] = n.nextIndex[peer] - 1
+	// 			req := n.replicateLog(peer, false)
+	// 			n.replicateToPeer(peer, req)
+	// 		}
+	// 	} else if resp.Term > n.term {
+	// 		n.term = resp.Term
+	// 		n.state = Follower
+	// 		n.votedFor = ""
+	// 		n.resetElectionTimer()
+	// 	}
 	// }
+}
+
+func (n *Node) sendAppendEntries(peer string, req *types.AppendEntriesRequest) {
+	resp, err := n.replicateToPeer(peer, req)
+	if err != nil {
+		return
+	}
+
+	n.events <- appendEntriesResponseEvent{
+		peer: peer,
+		resp: resp,
+	}
+}
+
+func (n *Node) handleAppendEntriesResponse(peer string, resp *types.AppendEntriesResponse) {
+	if resp.Term == n.term && n.state == Leader {
+		if resp.Success && resp.Ack >= n.matchIndex[peer] {
+			n.nextIndex[peer] = resp.Ack
+			n.matchIndex[peer] = resp.Ack
+			// CommitLog()
+		} else if n.nextIndex[peer] > 0 {
+			n.nextIndex[peer] = n.nextIndex[peer] - 1
+			req := n.replicateLog(peer, false)
+			go n.sendAppendEntries(peer, req)
+		}
+	} else if resp.Term > n.term {
+		n.term = resp.Term
+		n.state = Follower
+		n.votedFor = ""
+		n.resetElectionTimer()
+	}
+}
+
+func (n *Node) commitLogEntries() {
+
 }
 
 func (n *Node) replicateLog(peer string, isHeartBeat bool) *types.AppendEntriesRequest {

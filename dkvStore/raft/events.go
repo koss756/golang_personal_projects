@@ -23,3 +23,8 @@ type commandEvent struct {
 type commitLogEvent struct {
 	cmd []byte
 }
+
+type appendEntriesResponseEvent struct {
+	peer string
+	resp *types.AppendEntriesResponse
+}

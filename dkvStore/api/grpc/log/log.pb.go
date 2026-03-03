@@ -159,7 +159,7 @@ func (x *AppendEntriesMsg) GetLeaderCommit() int64 {
 
 type AppendEntriesResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	FollowerID    string                 `protobuf:"bytes,1,opt,name=followerID,proto3" json:"followerID,omitempty"`
+	FollowerId    string                 `protobuf:"bytes,1,opt,name=followerId,proto3" json:"followerId,omitempty"`
 	Term          int64                  `protobuf:"varint,2,opt,name=term,proto3" json:"term,omitempty"`
 	Ack           int64                  `protobuf:"varint,3,opt,name=ack,proto3" json:"ack,omitempty"`
 	Success       bool                   `protobuf:"varint,4,opt,name=success,proto3" json:"success,omitempty"`
@@ -197,9 +197,9 @@ func (*AppendEntriesResponse) Descriptor() ([]byte, []int) {
 	return file_api_grpc_log_log_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *AppendEntriesResponse) GetFollowerID() string {
+func (x *AppendEntriesResponse) GetFollowerId() string {
 	if x != nil {
-		return x.FollowerID
+		return x.FollowerId
 	}
 	return ""
 }
@@ -242,8 +242,8 @@ const file_api_grpc_log_log_proto_rawDesc = "" +
 	"\fLeaderCommit\x18\x06 \x01(\x03R\fLeaderCommit\"w\n" +
 	"\x15AppendEntriesResponse\x12\x1e\n" +
 	"\n" +
-	"followerID\x18\x01 \x01(\tR\n" +
-	"followerID\x12\x12\n" +
+	"followerId\x18\x01 \x01(\tR\n" +
+	"followerId\x12\x12\n" +
 	"\x04term\x18\x02 \x01(\x03R\x04term\x12\x10\n" +
 	"\x03ack\x18\x03 \x01(\x03R\x03ack\x12\x18\n" +
 	"\asuccess\x18\x04 \x01(\bR\asuccess2J\n" +
