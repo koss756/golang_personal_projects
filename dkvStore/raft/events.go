@@ -11,6 +11,11 @@ type requestVoteEvent struct {
 	req  *types.RequestVoteRequest
 	resp chan *types.RequestVoteResponse
 }
+
+type voteResponseEvent struct {
+	peer string
+	resp *types.RequestVoteResponse
+}
 type appendEntriesEvent struct {
 	req  *types.AppendEntriesRequest
 	resp chan *types.AppendEntriesResponse

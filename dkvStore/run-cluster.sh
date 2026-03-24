@@ -2,7 +2,7 @@
 
 set -e
 
-NODES=2
+NODES=5
 GRPC_BASE_PORT=9000
 HTTP_BASE_PORT=8000
 CMD="go run cmd/dkvStore/main.go"

@@ -2,13 +2,14 @@ package httpapi
 
 import (
 	"bytes"
-	"encoding/gob"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
+
+	"github.com/koss756/dkvStore/kvstore"
 )
 
+// Command is the JSON shape for /command; only set/delete are replicated.
 type Command struct {
 	Op    string `json:"op"`
 	Key   string `json:"key"`
@@ -16,13 +17,11 @@ type Command struct {
 }
 
 func SerializeCommand(cmd Command) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	err := enc.Encode(cmd)
-	if err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	return kvstore.EncodeCommand(kvstore.Command{
+		Op:    cmd.Op,
+		Key:   cmd.Key,
+		Value: cmd.Value,
+	})
 }
 
 func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {
@@ -31,7 +30,6 @@ func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	log.Printf("Raw request body: %s", string(body))
 
 	// Restore the body so Decode can still read it
 	r.Body = io.NopCloser(bytes.NewBuffer(body))
@@ -39,6 +37,11 @@ func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {
 	var cmd Command
 	if err := json.NewDecoder(r.Body).Decode(&cmd); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if cmd.Op != kvstore.OpSet && cmd.Op != kvstore.OpDelete {
+		http.Error(w, `op must be "set" or "delete"`, http.StatusBadRequest)
 		return
 	}
 

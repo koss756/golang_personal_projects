@@ -69,7 +69,6 @@ func (s *GRPCServer) AppendEntries(ctx context.Context, req *log.AppendEntriesMs
 	}
 
 	raftResp, err := s.raftService.RecieveAppendEntries(ctx, raftReq)
-	stdlog.Printf("RESP AT SERVER %+v", raftResp)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +98,7 @@ func StartServer(addr string, nodeID string, node *raft.Node) error {
 	// Handle graceful shutdown
 	errChan := make(chan error, 1)
 	go func() {
-		stdlog.Printf("Node %d starting gRPC server on %s", nodeID, addr)
+		stdlog.Printf("Node %s starting gRPC server on %s", nodeID, addr)
 		if err := grpcServer.Serve(lis); err != nil {
 			errChan <- err
 		}
@@ -107,7 +106,7 @@ func StartServer(addr string, nodeID string, node *raft.Node) error {
 
 	// Wait for server to error out (including when killed)
 	err = <-errChan
-	stdlog.Printf("Node %d gRPC server on %s shutting down: %v", nodeID, addr, err)
+	stdlog.Printf("Node %s gRPC server on %s shutting down: %v", nodeID, addr, err)
 
 	grpcServer.GracefulStop()
 	return err

@@ -105,7 +105,9 @@ func (c *RaftClient) AppendEntries(ctx context.Context, target string, req *type
 	}
 
 	return &types.AppendEntriesResponse{
-		Term:    int(grpcResp.Term),
-		Success: true,
+		FollowerId: string(grpcResp.FollowerId),
+		Term:       int(grpcResp.Term),
+		Ack:        int(grpcResp.Ack),
+		Success:    grpcResp.Success,
 	}, nil
 }
