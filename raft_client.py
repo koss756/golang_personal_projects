@@ -5,8 +5,9 @@ import requests
 PORT_RANGE = list(range(8000, 8005))
 
 
-def leader_id_to_port(leader_id: int) -> int:
-    return 7999 + leader_id  # 1->8000, 5->8004
+def grpc_to_http_port(grpc_port: int) -> int:
+    """Cluster uses HTTP on grpc_port - 1000 (e.g. :9004 gRPC → :8004 HTTP)."""
+    return grpc_port - 1000
 
 
 def send_command(port: int, payload: dict):
@@ -34,13 +35,14 @@ def find_and_send(payload: dict):
             print(f"✓ Success from port {port}: {resp}")
             return
 
-        # Redirect to leader
-        leader_id = resp.get("leader_id")
-        if leader_id:
-            leader_id = int(leader_id)
-            leader_port = leader_id_to_port(leader_id)
-            leader_resp = send_command(leader_port, payload)
-            print(f"→ Redirected to leader {leader_id} (port {leader_port})")
+        # Redirect to leader (leader_id is gRPC address like ":9004"; HTTP is offset by -1000)
+        leader = resp.get("leader_id")
+        if leader:
+            grpc_port = int(leader.lstrip(":"))
+            http_port = grpc_to_http_port(grpc_port)
+
+            leader_resp = send_command(http_port, payload)
+            print(f"→ Redirected to leader (gRPC :{grpc_port}, HTTP :{http_port})")
             print(f"✓ Leader response: {leader_resp}")
             return
 
