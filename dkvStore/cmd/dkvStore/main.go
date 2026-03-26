@@ -14,10 +14,9 @@ import (
 )
 
 func main() {
-	conf := raft.Config{ElectionTimeoutLowerBound: 1500, ElectionTimeoutUpperBound: 3000, HeartbeatTimeout: 1000}
 
 	var (
-		id       = flag.String("id", "", "node id (e.g. :9001)")
+		id       = flag.String("id", "", "node id (e.g. node1)")
 		grpcAddr = flag.String("grpc-addr", "", "listen address (e.g. :9000)")
 		httpAddr = flag.String("http-addr", "", "listen address (e.g. :8000)")
 		peers    = flag.String("peers", "", "comma-separated peer addresses")
@@ -28,17 +27,39 @@ func main() {
 		log.Fatal("id, grpc-addr, and http-addr are required")
 	}
 
-	peerList := []string{}
+	peerList := []raft.Peer{}
 	if *peers != "" {
-		peerList = strings.Split(*peers, ",")
+		for _, p := range strings.Split(*peers, ",") {
+			parts := strings.SplitN(p, "@", 2)
+			if len(parts) != 2 {
+				log.Fatalf("invalid peer format %q, expected id@grpc-addr", p)
+			}
+			peerList = append(peerList, raft.Peer{ID: parts[0], GRPCAddr: parts[1]})
+		}
 	}
 
-	grpcClient, err := grpc.NewGRPCClient(peerList)
+	conf := raft.Config{
+		ID:       *id,
+		GRPCAddr: *grpcAddr,
+		HTTPAddr: *httpAddr,
+		Peers:    peerList,
+
+		ElectionTimeoutLowerBound: 1500,
+		ElectionTimeoutUpperBound: 3000,
+		HeartbeatTimeout:          1000,
+	}
+
+	peerAddresses := make([]string, 0, len(peerList))
+	for _, p := range peerList {
+		peerAddresses = append(peerAddresses, p.GRPCAddr)
+	}
+
+	grpcClient, err := grpc.NewGRPCClient(peerAddresses)
 	if err != nil {
 		log.Fatalf("failed to create gRPC client: %v", err)
 	}
 
-	node := raft.NewNode(*id, peerList, grpcClient, conf)
+	node := raft.NewNode(grpcClient, conf)
 
 	httpServer := httpapi.NewServer(node, *httpAddr)
 

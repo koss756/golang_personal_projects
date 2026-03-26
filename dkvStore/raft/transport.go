@@ -18,4 +18,5 @@ type Server interface {
 
 type CommandHandler interface {
 	SubmitCommand(ctx context.Context, cmd []byte) error
+	GetStore() map[string]string
 }

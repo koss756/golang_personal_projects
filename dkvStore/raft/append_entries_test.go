@@ -22,7 +22,7 @@ func TestHandleCommand_AppendToLog(t *testing.T) {
 	n.state = Leader
 	n.term = 1
 	n.logs = []types.LogEntry{}
-	n.matchIndex = map[string]int{n.id: 0}
+	n.matchIndex = map[string]int{n.config.ID: 0}
 	n.nextIndex = map[string]int{"node2": 1, "node3": 1}
 
 	cmd := []byte("set x=1")
@@ -44,12 +44,12 @@ func TestHandleCommand_UpdatesMatchIndex(t *testing.T) {
 	n.state = Leader
 	n.term = 1
 	n.logs = makeLogs(2, 1) // pre-existing entries
-	n.matchIndex = map[string]int{n.id: 2}
+	n.matchIndex = map[string]int{n.config.ID: 2}
 	n.nextIndex = map[string]int{"node2": 3}
 
 	n.handleCommand([]byte("set y=2"))
 
-	assert.Equal(t, 3, n.matchIndex[n.id])
+	assert.Equal(t, 3, n.matchIndex[n.config.ID])
 }
 
 // TestHandleCommand_ReplicatesToAllPeers verifies that AppendEntries is sent
@@ -65,7 +65,7 @@ func TestHandleCommand_ReplicatesToAllPeers(t *testing.T) {
 	n.state = Leader
 	n.term = 1
 	n.logs = []types.LogEntry{}
-	n.matchIndex = map[string]int{n.id: 0}
+	n.matchIndex = map[string]int{n.config.ID: 0}
 	n.nextIndex = map[string]int{"node2": 1, "node3": 1}
 
 	n.handleCommand([]byte("del z"))
@@ -88,7 +88,7 @@ func TestSendAppendEntries_PostsResponseEvent(t *testing.T) {
 	n.term = 1
 
 	req := &types.AppendEntriesRequest{}
-	go n.sendAppendEntries("node2", req)
+	go n.sendAppendEntries("node2", "node2", req)
 
 	select {
 	case e := <-n.events:
@@ -111,7 +111,7 @@ func TestSendAppendEntries_DropsOnError(t *testing.T) {
 	n := newTestNode("node1", []string{"node2"}, transport)
 
 	req := &types.AppendEntriesRequest{}
-	go n.sendAppendEntries("node2", req)
+	go n.sendAppendEntries("node2", "node2", req)
 
 	select {
 	case e := <-n.events:
@@ -130,7 +130,7 @@ func TestHandleCommand_NoPeers(t *testing.T) {
 	n.state = Leader
 	n.term = 2
 	n.logs = []types.LogEntry{}
-	n.matchIndex = map[string]int{n.id: 0}
+	n.matchIndex = map[string]int{n.config.ID: 0}
 	n.nextIndex = map[string]int{}
 
 	assert.NotPanics(t, func() {
@@ -138,7 +138,7 @@ func TestHandleCommand_NoPeers(t *testing.T) {
 	})
 
 	assert.Len(t, n.logs, 1)
-	assert.Equal(t, 1, n.matchIndex[n.id])
+	assert.Equal(t, 1, n.matchIndex[n.config.ID])
 	transport.AssertNotCalled(t, "AppendEntries", mock.Anything, mock.Anything, mock.Anything)
 }
 

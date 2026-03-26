@@ -15,13 +15,14 @@ echo "Starting $NODES-node Raft cluster..."
 for ((i=0; i<NODES; i++)); do
   GRPC_PORT=$((GRPC_BASE_PORT + i))
   HTTP_PORT=$((HTTP_BASE_PORT + i))
-
-  ID=":$GRPC_PORT"
+  ID="node_$i"
 
   PEERS=()
   for ((j=0; j<NODES; j++)); do
     if [[ $i -ne $j ]]; then
-      PEERS+=(":$((GRPC_BASE_PORT + j))")
+      PEER_ID="node_$j"
+      PEER_ADDR=":$((GRPC_BASE_PORT + j))"
+      PEERS+=("${PEER_ID}@${PEER_ADDR}")
     fi
   done
 
@@ -33,7 +34,7 @@ for ((i=0; i<NODES; i++)); do
 
   $CMD \
     --id="$ID" \
-    --grpc-addr="$ID" \
+    --grpc-addr=":$GRPC_PORT" \
     --http-addr=":$HTTP_PORT" \
     --peers="$PEER_LIST" \
     > logs/node-$GRPC_PORT.log 2>&1 &

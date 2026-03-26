@@ -23,6 +23,7 @@ func NewServer(handler raft.CommandHandler, addr string) *Server {
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/command", s.handleCommand)
+	mux.HandleFunc("/store", s.handleStore)
 	// mux.HandleFunc("/status", s.handleStatus)
 
 	s.srv = &http.Server{

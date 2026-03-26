@@ -33,19 +33,28 @@ func (m *MockTransport) AppendEntries(ctx context.Context, peer string, req *typ
 // newTestNode creates a node with timers stopped and no event loop running.
 // Use for unit tests that call handlers directly.
 func newTestNode(id string, peers []string, transport Client) *Node {
+	peerList := make([]Peer, 0, len(peers))
+	for _, p := range peers {
+		// Tests often use a single string to represent a peer; treat it as both ID and address.
+		peerList = append(peerList, Peer{ID: p, GRPCAddr: p})
+	}
+
 	conf := Config{
 		ElectionTimeoutLowerBound: 150,
 		ElectionTimeoutUpperBound: 300,
 		HeartbeatTimeout:          50,
+		GRPCAddr:                  ":9000",
+		HTTPAddr:                  ":8000",
+		ID:                        id,
+		Peers:                     peerList,
 	}
 
 	electionTimeout := randomizedTimeout(conf.ElectionTimeoutLowerBound, conf.ElectionTimeoutUpperBound)
 
 	n := &Node{
-		id:             id,
 		state:          Follower,
 		term:           0,
-		peers:          peers,
+		peers:          peerList,
 		transport:      transport,
 		events:         make(chan event, 10),
 		config:         conf,

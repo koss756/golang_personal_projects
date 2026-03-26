@@ -47,6 +47,14 @@ def find_and_send(payload: dict):
             return
 
     print("✗ No reachable leader found.")
+    
+def get_store(port: int):
+    url = f"http://localhost:{port}/store"
+    try:
+        response = requests.get(url, timeout=2)
+        return response.json()
+    except requests.RequestException:
+        return None
 
 
 def parse_input(user_input: str):
@@ -77,6 +85,22 @@ def parse_input(user_input: str):
             "op": "delete",
             "key": parts[1],
         }
+    
+    elif op == "STORE":
+        port = 8000
+        if len(parts) == 2:
+            try:
+                port = int(parts[1].lstrip(":"))
+            except ValueError:
+                print("Usage: STORE [port]  e.g. STORE 8002")
+                return None
+        store = get_store(port)
+        if store is None:
+            print(f"✗ Could not reach :{port}")
+        else:
+            print(f"Store @ :{port}:")
+            print(json.dumps(store, indent=2))
+        return None  # handled inline, no command to send
 
     else:
         print("Unknown command. Use SET or DELETE.")

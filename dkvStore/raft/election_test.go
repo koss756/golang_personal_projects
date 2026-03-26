@@ -18,7 +18,7 @@ func TestHandleVoteResponse_QuorumReached_BecomesLeader(t *testing.T) {
 	n := newTestNode("9000", []string{"9001", "9002"}, transport)
 	n.state = Candidate
 	n.term = 1
-	n.votedFor = n.id
+	n.votedFor = n.config.ID
 	n.votesReceived = 1 // self vote
 
 	n.handleVoteResponse("9001", &types.RequestVoteResponse{
@@ -36,7 +36,7 @@ func TestHandleVoteResponse_NoQuorum_StaysCandidate(t *testing.T) {
 	n := newTestNode("9000", []string{"9001", "9002", "9003", "9004"}, transport)
 	n.state = Candidate
 	n.term = 1
-	n.votedFor = n.id
+	n.votedFor = n.config.ID
 	n.votesReceived = 1
 
 	n.handleVoteResponse("9001", &types.RequestVoteResponse{
@@ -229,14 +229,11 @@ func TestElection_HigherTermResponse_StepsDown(t *testing.T) {
 	n := newRunningTestNode("9000", []string{"9001", "9002"}, transport)
 	n.events <- electionTimeout{}
 
-	waitForState(t, n, Follower, 1*time.Second)
-
-	n.mu.RLock()
-	term := n.term
-	n.mu.RUnlock()
-
-	assert.Equal(t, Follower, n.state)
-	assert.Equal(t, 10, term)
+	assert.Eventually(t, func() bool {
+		n.mu.RLock()
+		defer n.mu.RUnlock()
+		return n.state == Follower && n.term == 10
+	}, 1*time.Second, 10*time.Millisecond)
 }
 
 // A candidate that receives an AppendEntries from a valid leader should
@@ -302,7 +299,7 @@ func TestStepDown_ClearsVotedFor(t *testing.T) {
 	n := newTestNode("9000", []string{"9001"}, transport)
 	n.state = Candidate
 	n.term = 1
-	n.votedFor = n.id
+	n.votedFor = n.config.ID
 
 	n.handleVoteResponse("9001", &types.RequestVoteResponse{
 		Term:        5,

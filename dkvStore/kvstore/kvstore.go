@@ -74,3 +74,11 @@ func (kv *KVStore) Get(key string) (string, bool) {
 	v, ok := kv.data[key]
 	return v, ok
 }
+
+func (kv *KVStore) GetAll() map[string]string {
+	copied := make(map[string]string, len(kv.data))
+	for k, v := range kv.data {
+		copied[k] = v
+	}
+	return copied
+}
