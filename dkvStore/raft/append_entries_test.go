@@ -346,3 +346,20 @@ func TestHandleAE_ResponseContainsFollowerIdAndTerm(t *testing.T) {
 	assert.Equal(t, "node1", resp.FollowerId)
 	assert.Equal(t, 3, resp.Term)
 }
+
+// ── replicate log ───────────────────────────────────────────────────────────
+
+func TestHandleAE_ReplicateLogWithOutdatedFollowerLog(t *testing.T) {
+	n := newTestNode("node1", []string{"node2"}, nil)
+
+	n.logs = makeSequentialLogs(7, 1)
+	n.Elect()
+
+	// follower only has 3 entries
+	n.nextIndex["node2"] = 3
+
+	req := n.replicateLog("node2", false)
+
+	assert.Equal(t, 2, req.PrevLogIndex)
+	assert.Equal(t, 3, req.PrevLogTerm)
+}

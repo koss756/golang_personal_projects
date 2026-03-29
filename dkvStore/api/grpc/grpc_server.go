@@ -6,6 +6,7 @@ import (
 	stdlog "log"
 	"net"
 
+	"github.com/koss756/dkvStore/api/fault"
 	"github.com/koss756/dkvStore/api/grpc/log"
 	"github.com/koss756/dkvStore/api/grpc/vote"
 	"github.com/koss756/dkvStore/raft"
@@ -82,16 +83,19 @@ func (s *GRPCServer) AppendEntries(ctx context.Context, req *log.AppendEntriesMs
 	}, nil
 }
 
-func StartServer(addr string, nodeID string, node *raft.Node) error {
+func StartServer(addr string, nodeID string, node *raft.Node, injector *fault.Injector) error {
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
 	defer lis.Close()
 
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(injector.UnaryServerInterceptor()),
+	)
+
 	srv := NewGRPCServer(nodeID, node)
-	// Register your services here
+
 	vote.RegisterVoteServiceServer(grpcServer, srv)
 	log.RegisterLogServiceServer(grpcServer, srv)
 

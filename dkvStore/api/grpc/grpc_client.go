@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/koss756/dkvStore/api/fault"
 	"github.com/koss756/dkvStore/api/grpc/log"
 	"github.com/koss756/dkvStore/api/grpc/vote"
 	"github.com/koss756/dkvStore/types"
@@ -15,15 +16,19 @@ type RaftClient struct {
 	connections map[string]*grpc.ClientConn
 	voteClients map[string]vote.VoteServiceClient
 	logClients  map[string]log.LogServiceClient
+	fault       *fault.Injector
 }
 
-func NewGRPCClient(peerAddresses []string) (*RaftClient, error) {
+func NewGRPCClient(peerAddresses []string, injector *fault.Injector) (*RaftClient, error) {
 	voteClients := make(map[string]vote.VoteServiceClient)
 	logClients := make(map[string]log.LogServiceClient)
 	connections := make(map[string]*grpc.ClientConn)
 
 	for _, addr := range peerAddresses {
-		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err := grpc.NewClient(addr,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithUnaryInterceptor(injector.UnaryClientInterceptor()),
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to connect to %s: %v", addr, err)
 		}
@@ -37,6 +42,7 @@ func NewGRPCClient(peerAddresses []string) (*RaftClient, error) {
 		voteClients: voteClients,
 		logClients:  logClients,
 		connections: connections,
+		fault:       injector,
 	}, nil
 }
 

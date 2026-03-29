@@ -105,7 +105,7 @@ func (n *Node) Start() {
 func (n *Node) SubmitCommand(ctx context.Context, cmd []byte) error {
 	// If not leader, return error or redirect
 	if n.state != Leader {
-		return fmt.Errorf("%s", n.config.HTTPAddr)
+		return fmt.Errorf("%s", n.leaderId)
 	}
 
 	n.events <- commandEvent{cmd: cmd}
@@ -172,7 +172,6 @@ func (n *Node) Elect() {
 		n.matchIndex[peer.ID] = 0 //ackedLength
 	}
 	n.matchIndex[n.config.ID] = len(n.logs)
-
 	n.resetElectionTimer()
 	n.resetHeartbeatTimer()
 }
@@ -276,7 +275,7 @@ func (n *Node) handleVoteResponse(peer string, resp *types.RequestVoteResponse) 
 	}
 
 	if resp.VoteGranted {
-		n.votesReceived++ // new field on Node, reset to 1 (self) at election start
+		n.votesReceived++
 	}
 
 	if n.votesReceived >= n.votesNeeded {
@@ -308,8 +307,8 @@ func (n *Node) handleElectionTimeout() {
 		LastLogTerm:  lastLogTerm,
 	}
 
-	// vote for self
-	n.votesReceived += 1
+	// Fresh count each candidacy; stale RPC responses for older terms are ignored in handleVoteResponse.
+	n.votesReceived = 1
 
 	for _, peer := range n.peers {
 		go func(p string) {
@@ -410,8 +409,8 @@ func (n *Node) handleAppendEntries(req *types.AppendEntriesRequest) *types.Appen
 }
 
 func (n *Node) appendEntries(prevLogIndex int, leaderCommit int, entries []types.LogEntry) {
-	log.Printf("[Node %s] AppendEntries start | prevLogIndex=%d leaderCommit=%d entries=%d localLogLen=%d commitIndex=%d",
-		n.config.ID, prevLogIndex, leaderCommit, len(entries), len(n.logs), n.commitIndex,
+	log.Printf("[Node %s] AppendEntries start LEADER: %s | prevLogIndex=%d leaderCommit=%d entries=%d localLogLen=%d commitIndex=%d",
+		n.config.ID, n.leaderId, prevLogIndex, leaderCommit, len(entries), len(n.logs), n.commitIndex,
 	)
 
 	if len(entries) > 0 && len(n.logs) > prevLogIndex {
@@ -547,24 +546,25 @@ func (n *Node) commitLogEntries() {
 	n.commitIndex = maxReady
 }
 
+// builds an append entry req
 func (n *Node) replicateLog(peer string, isHeartBeat bool) *types.AppendEntriesRequest {
-	prevLogIndex := n.nextIndex[peer] // index of the next log entry to send to follower
+	prevLogLength := n.nextIndex[peer]
 
 	var entries []types.LogEntry
 
 	if !isHeartBeat {
-		entries = n.logs[prevLogIndex:] // log entries to store
+		entries = n.logs[prevLogLength+1:] // log entries to store
 	}
 
 	prevLogTerm := 0
-	if prevLogIndex > 0 {
-		prevLogTerm = n.logs[prevLogIndex-1].Term
+	if prevLogLength > 0 {
+		prevLogTerm = n.logs[prevLogLength].Term
 	}
 
 	return &types.AppendEntriesRequest{
 		Term:         n.term,
 		LeaderId:     n.config.ID,
-		PrevLogIndex: prevLogIndex,
+		PrevLogIndex: prevLogLength,
 		PrevLogTerm:  prevLogTerm,
 		Entries:      entries,
 		LeaderCommit: n.commitIndex,

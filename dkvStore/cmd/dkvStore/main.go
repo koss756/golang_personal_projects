@@ -8,6 +8,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/koss756/dkvStore/api/fault"
 	"github.com/koss756/dkvStore/api/grpc"
 	"github.com/koss756/dkvStore/api/httpapi"
 	"github.com/koss756/dkvStore/raft"
@@ -54,19 +55,21 @@ func main() {
 		peerAddresses = append(peerAddresses, p.GRPCAddr)
 	}
 
-	grpcClient, err := grpc.NewGRPCClient(peerAddresses)
+	injector := fault.NewInjector()
+
+	grpcClient, err := grpc.NewGRPCClient(peerAddresses, injector)
 	if err != nil {
 		log.Fatalf("failed to create gRPC client: %v", err)
 	}
 
 	node := raft.NewNode(grpcClient, conf)
 
-	httpServer := httpapi.NewServer(node, *httpAddr)
+	httpServer := httpapi.NewServer(node, *httpAddr, injector)
 
 	// Start gRPC server (Raft RPCs)
 	go func() {
 		log.Printf("Starting gRPC server on %s", *grpcAddr)
-		if err := grpc.StartServer(*grpcAddr, node.GetId(), node); err != nil {
+		if err := grpc.StartServer(*grpcAddr, node.GetId(), node, injector); err != nil {
 			log.Fatalf("gRPC server stopped: %v", err)
 		}
 	}()
