@@ -4,7 +4,10 @@ import (
 	"testing"
 	"time"
 
+	// "time"
+
 	"github.com/koss756/dkvStore/types"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -142,11 +145,12 @@ func TestHandleCommand_NoPeers(t *testing.T) {
 	transport.AssertNotCalled(t, "AppendEntries", mock.Anything, mock.Anything, mock.Anything)
 }
 
-// ── Follower Recieves Append Entries ───────────────────────────────────────────
+// // ── Follower Recieves Append Entries ───────────────────────────────────────────
 
 func TestHandleAE_HigherTermUpdatesTermAndClearsVote(t *testing.T) {
 	n := newTestNode("node1", []string{"node2"}, nil)
 	n.term = 1
+	n.state = Follower
 	n.votedFor = "node2"
 
 	req := &types.AppendEntriesRequest{
@@ -157,12 +161,32 @@ func TestHandleAE_HigherTermUpdatesTermAndClearsVote(t *testing.T) {
 		LeaderCommit: 0,
 		Entries:      []types.LogEntry{},
 	}
+
 	n.handleAppendEntries(req)
 
 	assert.Equal(t, 3, n.term)
 	assert.Equal(t, "", n.votedFor)
 	assert.Equal(t, n.state, Follower)
 	assert.Equal(t, n.leaderId, req.LeaderId)
+}
+
+func TestHandleAE_NewerTermBecomesFollower(t *testing.T) {
+	n := newTestNode("node1", []string{"node2"}, nil)
+	n.term = 2
+	n.state = Candidate
+
+	req := &types.AppendEntriesRequest{
+		Term:         2,
+		LeaderId:     "node2",
+		PrevLogIndex: 0,
+		PrevLogTerm:  0,
+		LeaderCommit: 0,
+		Entries:      []types.LogEntry{},
+	}
+	n.handleAppendEntries(req)
+
+	assert.Equal(t, Follower, n.state)
+	assert.Equal(t, "node2", n.leaderId)
 }
 
 // TestHandleAE_SameTermBecomesFollower verifies that matching term causes the
@@ -186,16 +210,16 @@ func TestHandleAE_SameTermBecomesFollower(t *testing.T) {
 	assert.Equal(t, "node2", n.leaderId)
 }
 
-// ── logOk — rejection cases ───────────────────────────────────────────────────
+// // ── logOk — rejection cases ───────────────────────────────────────────────────
 
 // TestHandleAE_RejectWhenLogTooShort verifies that a request referencing a
 // PrevLogIndex beyond the follower's log length is rejected.
 func TestHandleAE_RejectWhenLogTooShort(t *testing.T) {
-	n := newTestNode("node1", []string{"node2"}, nil)
-	n.term = 1
-	n.logs = makeLogs(2, 1) // only 2 entries
+	follower_node := newTestNode("node1", []string{"node2"}, nil)
+	follower_node.term = 1
+	follower_node.logs = makeLogs(2, 1)
 
-	req := &types.AppendEntriesRequest{
+	leader_req := &types.AppendEntriesRequest{
 		Term:         1,
 		LeaderId:     "node2",
 		PrevLogIndex: 5, // follower doesn't have entry 5
@@ -203,7 +227,7 @@ func TestHandleAE_RejectWhenLogTooShort(t *testing.T) {
 		LeaderCommit: 0,
 		Entries:      []types.LogEntry{},
 	}
-	resp := n.handleAppendEntries(req)
+	resp := follower_node.handleAppendEntries(leader_req)
 
 	assert.False(t, resp.Success)
 	assert.Equal(t, 0, resp.Ack)
@@ -250,7 +274,7 @@ func TestHandleAE_RejectWhenTermStale(t *testing.T) {
 	assert.Equal(t, 0, resp.Ack)
 }
 
-// ── logOk — acceptance cases ──────────────────────────────────────────────────
+// // ── logOk — acceptance cases ──────────────────────────────────────────────────
 
 // TestHandleAE_AcceptWhenPrevLogIndexZero verifies that a request with
 // PrevLogIndex=0 (first ever entries) always passes the log check.
@@ -318,7 +342,7 @@ func TestHandleAE_AckIsHeartbeat(t *testing.T) {
 	assert.Len(t, n.logs, 4)     // no new entries appended
 }
 
-// ── Response fields ───────────────────────────────────────────────────────────
+// // ── Response fields ───────────────────────────────────────────────────────────
 
 // TestHandleAE_ResponseContainsFollowerIdAndTerm verifies that both success
 // and failure responses always carry the node's own ID and current term.
@@ -349,17 +373,28 @@ func TestHandleAE_ResponseContainsFollowerIdAndTerm(t *testing.T) {
 
 // ── replicate log ───────────────────────────────────────────────────────────
 
+func TestHandleAE_ReplicateLogWithEmptyInitalLog(t *testing.T) {
+	n := newTestNode("node1", []string{"node2"}, nil)
+
+	req := n.replicateLog("node2")
+
+	assert.Equal(t, 0, req.PrevLogIndex)
+	assert.Equal(t, 0, req.PrevLogTerm)
+	assert.Empty(t, req.Entries)
+}
+
 func TestHandleAE_ReplicateLogWithOutdatedFollowerLog(t *testing.T) {
 	n := newTestNode("node1", []string{"node2"}, nil)
 
 	n.logs = makeSequentialLogs(7, 1)
-	n.Elect()
+	n.nextIndex = make(map[string]int)
 
 	// follower only has 3 entries
 	n.nextIndex["node2"] = 3
 
-	req := n.replicateLog("node2", false)
+	req := n.replicateLog("node2")
 
-	assert.Equal(t, 2, req.PrevLogIndex)
+	assert.Equal(t, 3, req.PrevLogIndex)
 	assert.Equal(t, 3, req.PrevLogTerm)
+	assert.Equal(t, n.logs[3:], req.Entries)
 }

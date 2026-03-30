@@ -170,6 +170,9 @@ func (n *Node) Elect() {
 
 		// the index of the highest known log entry committed by the follower
 		n.matchIndex[peer.ID] = 0 //ackedLength
+
+		req := n.replicateLog(peer.ID)
+		go n.sendAppendEntries(peer.ID, peer.GRPCAddr, req)
 	}
 	n.matchIndex[n.config.ID] = len(n.logs)
 	n.resetElectionTimer()
@@ -251,8 +254,6 @@ func (n *Node) handleEvent(ev event) {
 		e.resp <- resp
 	case commandEvent:
 		n.handleCommand(e.cmd)
-	case commitLogEvent:
-		log.Printf("WE COMMIT THE LOG!")
 	case appendEntriesResponseEvent:
 		n.handleAppendEntriesResponse(e.peer, e.resp)
 	case voteResponseEvent:
@@ -328,7 +329,7 @@ func (n *Node) handleElectionTimeout() {
 func (n *Node) handleHeartbeatTimeout() {
 	if n.state == Leader {
 		for _, peer := range n.peers {
-			req := n.replicateLog(peer.ID, true)
+			req := n.replicateLog(peer.ID)
 			go func(peerID string, peerAddr string, r *types.AppendEntriesRequest) {
 				resp, err := n.replicateToPeer(peerAddr, r)
 				if err != nil {
@@ -456,7 +457,7 @@ func (n *Node) handleCommand(cmd []byte) {
 	n.matchIndex[n.config.ID] = len(n.logs)
 
 	for _, peer := range n.peers {
-		req := n.replicateLog(peer.ID, false)
+		req := n.replicateLog(peer.ID)
 		go n.sendAppendEntries(peer.ID, peer.GRPCAddr, req)
 	}
 }
@@ -481,7 +482,7 @@ func (n *Node) handleAppendEntriesResponse(peer string, resp *types.AppendEntrie
 			n.commitLogEntries()
 		} else if n.nextIndex[peer] > 0 {
 			n.nextIndex[peer] = n.nextIndex[peer] - 1
-			req := n.replicateLog(peer, false)
+			req := n.replicateLog(peer)
 			if addr, ok := n.peerAddr(peer); ok {
 				go n.sendAppendEntries(peer, addr, req)
 			}
@@ -546,19 +547,18 @@ func (n *Node) commitLogEntries() {
 	n.commitIndex = maxReady
 }
 
-// builds an append entry req
-func (n *Node) replicateLog(peer string, isHeartBeat bool) *types.AppendEntriesRequest {
+func (n *Node) replicateLog(peer string) *types.AppendEntriesRequest {
+	// length of log entries on peere
 	prevLogLength := n.nextIndex[peer]
 
 	var entries []types.LogEntry
 
-	if !isHeartBeat {
-		entries = n.logs[prevLogLength+1:] // log entries to store
-	}
+	// missing log entries that are not on peer
+	entries = n.logs[prevLogLength:]
 
 	prevLogTerm := 0
 	if prevLogLength > 0 {
-		prevLogTerm = n.logs[prevLogLength].Term
+		prevLogTerm = n.logs[prevLogLength-1].Term
 	}
 
 	return &types.AppendEntriesRequest{
