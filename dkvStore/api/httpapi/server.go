@@ -27,6 +27,7 @@ func (s *Server) Start() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/command", s.handleCommand)
 	mux.HandleFunc("/store", s.handleStore)
+	mux.HandleFunc("GET /state", s.handleState)
 
 	mux.HandleFunc("POST /fault", s.handleSetFault)
 	mux.HandleFunc("DELETE /fault", s.handleClearFault)

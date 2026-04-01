@@ -30,6 +30,12 @@ func (s *Server) handleStore(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(store)
 }
 
+func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
+	state := s.handler.GetStatus()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(state)
+}
+
 func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {

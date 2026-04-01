@@ -116,10 +116,6 @@ func (n *Node) SubmitCommand(ctx context.Context, cmd []byte) error {
 func (n *Node) replicateToPeer(peer string, req *types.AppendEntriesRequest) (*types.AppendEntriesResponse, error) {
 	const timeout = 500 * time.Millisecond
 
-	if len(req.Entries) > 0 {
-		log.Printf("To peer %s with req: %+v", peer, req)
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -577,4 +573,40 @@ func (n *Node) GetId() string {
 
 func (n *Node) GetStore() map[string]string {
 	return n.store.GetAll()
+}
+
+func (n *Node) GetStatus() types.NodeStatus {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+
+	peers := make([]string, len(n.peers))
+	for i, p := range n.peers {
+		peers[i] = p.ID // or whatever identifier you use
+	}
+
+	// copy maps to avoid race conditions
+	nextIndex := make(map[string]int)
+	for k, v := range n.nextIndex {
+		nextIndex[k] = v
+	}
+
+	matchIndex := make(map[string]int)
+	for k, v := range n.matchIndex {
+		matchIndex[k] = v
+	}
+
+	return types.NodeStatus{
+		State:         n.state.String(),
+		Term:          n.term,
+		VotedFor:      n.votedFor,
+		LeaderID:      n.leaderId,
+		LogLength:     len(n.logs),
+		VotesReceived: n.votesReceived,
+		VotesNeeded:   n.votesNeeded,
+		CommitIndex:   n.commitIndex,
+		LastApplied:   n.lastApplied,
+		Peers:         peers,
+		NextIndex:     nextIndex,
+		MatchIndex:    matchIndex,
+	}
 }
